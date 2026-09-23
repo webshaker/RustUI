@@ -1,0 +1,37 @@
+[package]
+name = "rust_ui"
+version = "0.1.0"
+edition = "2024"
+description = "Widgets iced partages : menu, menu contextuel, arbre, calque, separateurs, palette"
+license = "MIT OR Apache-2.0"
+
+# ---------------------------------------------------------------------------
+# AUTONOME, et c est deliberé.
+#
+# Rien ici n herite d un workspace — pas de `version.workspace`, pas de
+# `edition.workspace`, pas de `iced.workspace`. Ce crate est fait pour VIVRE
+# AILLEURS : dans le depot `rust_ui`, consomme par Robot-Rust et par ThermoSim.
+# Vu de l exterieur, un `.workspace = true` ne veut rien dire et la compilation
+# s arrete.
+#
+# La lecon est deja payee dans ce depot : le `Cargo.toml` du Pi avait ete
+# recopie depuis le workspace, et la compilation echouait sur
+# « failed to find a workspace root » sans que la cause soit lisible.
+#
+# Corollaire : **ne pas remettre `.workspace = true` ici**, meme si le reste du
+# depot le fait. C est le seul crate dans ce cas, et c est ce qui le rend
+# deplacable d un `git mv`.
+# ---------------------------------------------------------------------------
+
+[dependencies]
+# UNE seule dependance, et c est le contrat.
+#
+# Pas de `robot_client_core`, pas de format de donnees, rien de metier : ce
+# crate ne sait pas ce qu il affiche. Le jour ou quelqu un ajoute une ligne
+# ici, elle se voit.
+#
+# ⚠️ Les deux projets qui le consomment doivent compiler la MEME iced, sinon
+# leurs types `Element` sont incompatibles et le message d erreur ne dit pas
+# pourquoi. Les FEATURES, elles, peuvent differer — ce sont deux compilations
+# separees (Robot-Rust prend `image`, ThermoSim prend `wgpu`).
+iced = { version = "0.13", features = ["advanced"] }
