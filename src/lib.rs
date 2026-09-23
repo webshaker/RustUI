@@ -55,6 +55,7 @@ pub mod colors;
 pub mod context_menu;
 pub mod layer;
 pub mod menu;
+pub mod modal;
 pub mod separator;
 pub mod tree;
 
@@ -62,5 +63,6 @@ pub use colors::*;
 pub use context_menu::context_menu;
 pub use layer::layer;
 pub use menu::{Menu, MenuItem, menu_bar, menu_dropdown};
+pub use modal::{cancel_confirm, error, field, modal, title};
 pub use separator::{horizontal_separator, vertical_separator};
 pub use tree::{Expanded, Node, tree};
