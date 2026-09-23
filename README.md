@@ -108,7 +108,26 @@ Quand le `[patch]` est actif, cargo écrit l'entrée `rust_ui` **sans ligne
 commité ; le `.cargo/config.toml`, non. Sur une machine sans le patch, cargo
 lit un lock qui décrit un chemin local qui n'existe pas.
 
-Avant de commiter un `Cargo.lock`, vérifier qu'il porte bien la ligne :
+**Ce n'est pas lié aux commits, mais à toute commande qui *résout*.** Avec le
+patch actif, `cargo update -p rust_ui` réécrit l'entrée en chemin local :
+
+```
+Adding rust_ui v0.1.0 (C:\Users\esobo\Documents\RustUI)
+Removing rust_ui v0.1.0 (https://github.com/webshaker/RustUI#b90c8fc5)
+```
+
+`cargo generate-lockfile`, l'ajout d'une dépendance ou une montée de version
+font pareil. Donc : **écarter `.cargo/config.toml` avant toute résolution
+destinée à être commitée**, et non « vérifier avant de commiter » — qui
+laisserait passer celle-là.
+
+```sh
+mv .cargo/config.toml .cargo/config.toml.off
+cargo update -p rust_ui        # ou generate-lockfile, ou cargo add...
+mv .cargo/config.toml.off .cargo/config.toml
+```
+
+Le lock doit porter la ligne `source` :
 
 ```
 [[package]]
@@ -116,12 +135,5 @@ name = "rust_ui"
 source = "git+https://github.com/webshaker/RustUI#<sha>"
 ```
 
-Si elle manque, écarter le patch le temps de régénérer :
-
-```sh
-mv .cargo/config.toml .cargo/config.toml.off
-cargo generate-lockfile
-mv .cargo/config.toml.off .cargo/config.toml
-```
-
-Trouvé par ThermoSim, qui a hérité d'un lock où la ligne manquait.
+Trouvé par ThermoSim, qui a hérité d'un lock où la ligne manquait — puis a
+montré que la recette de contournement était elle aussi incomplète.
