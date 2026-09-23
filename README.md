@@ -17,6 +17,7 @@ rust_ui = { git = "https://github.com/webshaker/RustUI" }
 | `tree` | arbre repliable, l'état d'ouverture chez l'appelant |
 | `layer` | **le rognage GPU** — voir plus bas |
 | `separator` | une ligne d'un pixel |
+| `modal` | la coquille modale, et les briques de formulaire dedans |
 | `colors` | la palette |
 
 ## Il ne connaît pas votre application, et c'est ce qui le rend partageable
@@ -99,3 +100,28 @@ rust_ui = { path = "../RustUI" }
 
 On dépend par git, épinglé et reproductible, et on édite en local sans
 cérémonie.
+
+### ⚠️ Le `[patch]` contamine le `Cargo.lock`
+
+Quand le `[patch]` est actif, cargo écrit l'entrée `rust_ui` **sans ligne
+`source`** — comme s'il s'agissait d'un crate local. Le `Cargo.lock` est
+commité ; le `.cargo/config.toml`, non. Sur une machine sans le patch, cargo
+lit un lock qui décrit un chemin local qui n'existe pas.
+
+Avant de commiter un `Cargo.lock`, vérifier qu'il porte bien la ligne :
+
+```
+[[package]]
+name = "rust_ui"
+source = "git+https://github.com/webshaker/RustUI#<sha>"
+```
+
+Si elle manque, écarter le patch le temps de régénérer :
+
+```sh
+mv .cargo/config.toml .cargo/config.toml.off
+cargo generate-lockfile
+mv .cargo/config.toml.off .cargo/config.toml
+```
+
+Trouvé par ThermoSim, qui a hérité d'un lock où la ligne manquait.
