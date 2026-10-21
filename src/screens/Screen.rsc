@@ -7,6 +7,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 import { Panel, MenuBar } from "./Panel.rsc";
+import { Raccourci, Raccourcis } from "./Window.rsc";
 
 /// Sens de decoupage d'un `Splitter`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,7 +38,10 @@ pub(crate) struct SplitDef<D> {
 pub(crate) struct ScreenDef<D> {
     pub(crate) menu: Option<FillMenu<D>>,
     pub(crate) toolbar: Option<Fill<D>>,
+    pub(crate) statusbar: Option<Fill<D>>,
     pub(crate) content: Vec<Node<D>>,
+    /// Raccourcis propres a cet ecran (avant ceux de la fenetre).
+    pub(crate) raccourcis: Raccourcis<D>,
 }
 
 /// Un ecran, a remplir.
@@ -58,6 +62,18 @@ pub class Screen<D> {
     /// La barre d'outils, sous les menus (les elements y sont alignes).
     pub fn add_toolbar(&self, fill: impl for<'a> Fn(&str, &mut Panel<'a, D>, &'a D) + 'static) {
         self.def.borrow_mut().toolbar = Some(Rc::new(fill));
+    }
+
+    /// La barre d'etat, en bas de l'ecran (une ligne, les elements alignes).
+    pub fn add_statusbar(&self, fill: impl for<'a> Fn(&str, &mut Panel<'a, D>, &'a D) + 'static) {
+        self.def.borrow_mut().statusbar = Some(Rc::new(fill));
+    }
+
+    /// Un raccourci clavier valable sur cet ecran seulement (« Delete », « F9 »...) ;
+    /// il passe avant un raccourci de la fenetre sur les memes touches.
+    pub fn add_shortcut(&self, keys: &str, action: impl Fn(&mut D) + 'static) {
+        let r = Raccourci::lire(keys).unwrap_or_else(|| panic!("raccourci illisible : {keys}"));
+        self.def.borrow_mut().raccourcis.push((r, Box::new(action)));
     }
 
     /// Un panneau qui occupe le contenu de l'ecran.

@@ -76,7 +76,7 @@ pub use application::{AppResult, AppWindow, Application, exit, new_app};
 
 // Application decrite par ecrans : fenetre, ecrans, decoupages, panneaux remplis
 // par des fonctions, actions qui modifient directement les donnees.
-pub use screens::{Direction, MenuBar, MenuBuilder, Panel, Screen, Splitter, SubMenu, Window};
+pub use screens::{Button, CheckBox, Direction, Group, Input, MenuBar, MenuBuilder, Panel, Screen, Splitter, SubMenu, Text, Window};
 pub use screens::{copy_to_clipboard, open_file, quit, save_file, show_screen};
 
 // Facade : ce dont une application a besoin, sous le nom de RustUI. Elle n'a

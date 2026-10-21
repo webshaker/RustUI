@@ -22,7 +22,7 @@ use iced::widget::{column, stack};
 use iced::{Element, Length, Subscription, Task, Theme};
 
 use crate::colors::*;
-import { Action, Actions, Ancien, MenuBar, Msg, Panel } from "./Panel.rsc";
+import { Action, Actions, MenuBar, Msg, Panel, Payload } from "./Panel.rsc";
 import { Effet } from "./effects.rsc";
 import { Direction, Fill, Node, Screen, ScreenDef } from "./Screen.rsc";
 
@@ -43,7 +43,7 @@ enum Touche {
 
 impl Raccourci {
     /// « Ctrl+Shift+Z », « F5 », « Delete », « R »...
-    fn lire(texte: &str) -> Option<Self> {
+    pub(crate) fn lire(texte: &str) -> Option<Self> {
         let mut r = Raccourci { ctrl: false, shift: false, alt: false, touche: Touche::Caractere(String::new()) };
         for partie in texte.split('+').map(str::trim) {
             match partie.to_lowercase().as_str() {
@@ -88,7 +88,27 @@ impl Raccourci {
         Some(r)
     }
 
-    fn correspond(&self, touche: &Key, m: Modifiers) -> bool {
+    /// La touche et les modificateurs que ce raccourci attend (pour simuler un appui).
+    #[cfg(feature = "testing")]
+    pub(crate) fn touche(&self) -> (Key, Modifiers) {
+        let mut m = Modifiers::empty();
+        if self.ctrl {
+            m |= Modifiers::CTRL;
+        }
+        if self.shift {
+            m |= Modifiers::SHIFT;
+        }
+        if self.alt {
+            m |= Modifiers::ALT;
+        }
+        let k = match &self.touche {
+            Touche::Nommee(n) => Key::Named(*n),
+            Touche::Caractere(c) => Key::Character(c.as_str().into()),
+        };
+        (k, m)
+    }
+
+    pub(crate) fn correspond(&self, touche: &Key, m: Modifiers) -> bool {
         if m.control() != self.ctrl || m.shift() != self.shift || m.alt() != self.alt {
             return false;
         }
@@ -101,7 +121,7 @@ impl Raccourci {
 }
 
 type TitreSelon<D> = Box<dyn Fn(&D) -> String>;
-type Raccourcis<D> = Vec<(Raccourci, Box<dyn Fn(&mut D)>)>;
+pub(crate) type Raccourcis<D> = Vec<(Raccourci, Box<dyn Fn(&mut D)>)>;
 type Condition<D> = Box<dyn Fn(&D) -> bool>;
 type Rappel<D> = Box<dyn Fn(&mut D)>;
 /// Enveloppe de toutes les actions (historique d'annulation, recalculs...).
@@ -109,8 +129,9 @@ type Enveloppe<D> = Box<dyn Fn(&mut D, &mut dyn FnMut(&mut D))>;
 type Modales<D> = Vec<(Condition<D>, Fill<D>, f32)>;
 type Minuteries<D> = Vec<(u64, Condition<D>, Box<dyn Fn(&mut D)>)>;
 /// Passerelle vers une interface a `Message` (le temps d'une migration).
-type Passerelle<D> = Box<dyn Fn(&mut D, Ancien) -> Task<Msg>>;
+type Passerelle<D> = Box<dyn Fn(&mut D, Payload) -> Task<Msg>>;
 type AbonnementsAnciens<D> = Box<dyn Fn(&D) -> Subscription<Msg>>;
+type EcranSelon<D> = Box<dyn Fn(&D) -> &'static str>;
 
 /// La fenetre : ses ecrans, ses raccourcis, son titre.
 pub class Window<D> {
@@ -121,6 +142,8 @@ pub class Window<D> {
     /// Les ecrans, par nom.
     pub(crate) ecrans: Vec<(&'static str, Rc<RefCell<ScreenDef<D>>>)>,
     pub(crate) affiche: usize,
+    /// L'ecran affiche, choisi par les donnees (`screen_from`).
+    pub(crate) ecran_selon: Option<EcranSelon<D>>,
     pub(crate) raccourcis: Raccourcis<D>,
     pub(crate) modales: Modales<D>,
     pub(crate) minuteries: Minuteries<D>,
@@ -132,7 +155,7 @@ pub class Window<D> {
 
     pub fn new(title: impl Into<String>, width: f32, height: f32) -> Self {
         Self {
-            titre: title.into(), titre_selon: None, largeur: width, hauteur: height, ecrans: vec![], affiche: 0, raccourcis: vec![],
+            titre: title.into(), titre_selon: None, largeur: width, hauteur: height, ecrans: vec![], affiche: 0, ecran_selon: None, raccourcis: vec![],
             modales: vec![], minuteries: vec![], sur_fermeture: None, passerelle: None, abonnements_anciens: None, premiere_tache: None, enveloppe: None,
         }
     }
@@ -168,7 +191,7 @@ pub class Window<D> {
     /// `Panel::add_legacy` sont traites par `handler`, comme avant.
     pub fn legacy<M: Clone + Send + Sync + 'static>(&mut self, handler: impl Fn(&mut D, M) -> Task<M> + 'static) {
         self.passerelle = Some(Box::new(move |d, ancien| match ancien.0.downcast_ref::<M>() {
-            Some(m) => handler(d, m.clone()).map(|m| Msg::Ancien(Ancien(std::sync::Arc::new(m)))),
+            Some(m) => handler(d, m.clone()).map(|m| Msg::Ancien(Payload(std::sync::Arc::new(m)))),
             None => Task::none(),
         }));
     }
@@ -176,12 +199,12 @@ pub class Window<D> {
     /// Tache de l'interface a `Message` a lancer au demarrage (par exemple
     /// ouvrir le fichier passe en argument).
     pub fn legacy_first<M: Send + Sync + 'static>(&mut self, task: Task<M>) {
-        self.premiere_tache = Some(task.map(|m| Msg::Ancien(Ancien(std::sync::Arc::new(m)))));
+        self.premiere_tache = Some(task.map(|m| Msg::Ancien(Payload(std::sync::Arc::new(m)))));
     }
 
     /// Abonnements de l'interface a `Message` (clavier, minuterie...).
     pub fn legacy_subscription<M: Send + Sync + 'static>(&mut self, f: impl Fn(&D) -> Subscription<M> + 'static) {
-        self.abonnements_anciens = Some(Box::new(move |d| f(d).map(|m| Msg::Ancien(Ancien(std::sync::Arc::new(m))))));
+        self.abonnements_anciens = Some(Box::new(move |d| f(d).map(|m| Msg::Ancien(Payload(std::sync::Arc::new(m))))));
     }
 
     /// L'indice de l'ecran `nom` ; un nom inconnu est une erreur de programmation.
@@ -202,7 +225,7 @@ pub class Window<D> {
     /// et arrive aux fonctions de remplissage.
     pub fn add_screen(&mut self, name: &'static str) -> Screen<D> {
         assert!(self.ecrans.iter().all(|(n, _)| *n != name), "ecran declare deux fois : « {name} »");
-        let def = Rc::new(RefCell::new(ScreenDef { menu: None, toolbar: None, content: vec![] }));
+        let def = Rc::new(RefCell::new(ScreenDef { menu: None, toolbar: None, statusbar: None, content: vec![], raccourcis: vec![] }));
         self.ecrans.push((name, def.clone()));
         Screen { name, def }
     }
@@ -212,7 +235,16 @@ pub class Window<D> {
         self.affiche = self.indice(name);
     }
 
-    /// Un raccourci clavier : « Ctrl+S », « F5 », « Delete »...
+    /// L'ecran affiche est choisi par les donnees : `f` rend son nom. Les
+    /// actions changent alors d'ecran en changeant les donnees (un onglet
+    /// courant dans le document, par exemple) ; `show_screen` et les boutons
+    /// d'ecran sont sans effet.
+    pub fn screen_from(&mut self, f: impl Fn(&D) -> &'static str + 'static) {
+        self.ecran_selon = Some(Box::new(f));
+    }
+
+    /// Un raccourci clavier de toute la fenetre : « Ctrl+S », « F5 », « Delete »...
+    /// Tant qu'une modale est ouverte, seul « Escape » est transmis.
     pub fn add_shortcut(&mut self, keys: &str, action: impl Fn(&mut D) + 'static) {
         let r = Raccourci::lire(keys).unwrap_or_else(|| panic!("raccourci illisible : {keys}"));
         self.raccourcis.push((r, Box::new(action)));
@@ -256,8 +288,8 @@ fn executer<D>(enveloppe: &Option<Enveloppe<D>>, doc: &mut D, action: impl FnOnc
 
 /// Ce qui tourne : la description de la fenetre, les donnees, l'etat de l'interface.
 pub(crate) struct Moteur<D> {
-    fenetre: Window<D>,
-    doc: D,
+    pub(crate) fenetre: Window<D>,
+    pub(crate) doc: D,
     menu_ouvert: Option<usize>,
     sous_menu: Option<usize>,
     actions: Actions<D>,
@@ -278,7 +310,20 @@ impl<D: 'static> Moteur<D> {
         }
     }
 
-    fn mise_a_jour(&mut self, m: Msg) -> Task<Msg> {
+    /// L'indice de l'ecran affiche (choisi par les donnees, s'il y a lieu).
+    pub(crate) fn ecran(&self) -> usize {
+        match &self.fenetre.ecran_selon {
+            Some(f) => self.fenetre.indice(f(&self.doc)),
+            None => self.fenetre.affiche,
+        }
+    }
+
+    /// Une modale est ouverte.
+    fn modale(&self) -> bool {
+        self.fenetre.modales.iter().any(|(quand, _, _)| quand(&self.doc))
+    }
+
+    pub(crate) fn mise_a_jour(&mut self, m: Msg) -> Task<Msg> {
         let tache = self.traiter(m);
         // Ce que les actions ont demande en plus (fichier, ecran, quitter...).
         Task::batch([tache, self.effets()])
@@ -303,6 +348,11 @@ impl<D: 'static> Moteur<D> {
                     executer(&self.fenetre.enveloppe, &mut self.doc, |d| f(d, v));
                 }
             }
+            Msg::Event(i, p) => {
+                if let Some(Action::Event(f)) = self.actions.borrow().get(i) {
+                    executer(&self.fenetre.enveloppe, &mut self.doc, |d| f(d, &p));
+                }
+            }
             Msg::Show(nom) => {
                 self.fenetre.affiche = self.fenetre.indice(nom);
                 self.menu_ouvert = None;
@@ -317,10 +367,19 @@ impl<D: 'static> Moteur<D> {
                 self.sous_menu = None;
             }
             Msg::Key(touche, mods) => {
-                if touche == Key::Named(Named::Escape) && self.menu_ouvert.is_some() {
+                let echap = touche == Key::Named(Named::Escape);
+                if echap && self.menu_ouvert.is_some() {
                     self.menu_ouvert = None;
-                } else if let Some((_, f)) = self.fenetre.raccourcis.iter().find(|(r, _)| r.correspond(&touche, mods)) {
-                    executer(&self.fenetre.enveloppe, &mut self.doc, |d| f(d));
+                } else if echap || !self.modale() {
+                    // Les raccourcis de l'ecran, puis ceux de la fenetre.
+                    let ecran = self.fenetre.ecrans[self.ecran()].1.clone();
+                    let ecran = ecran.borrow();
+                    let trouve = |l: &Raccourcis<D>| l.iter().position(|(r, _)| r.correspond(&touche, mods));
+                    if let Some(k) = trouve(&ecran.raccourcis) {
+                        executer(&self.fenetre.enveloppe, &mut self.doc, |d| (ecran.raccourcis[k].1)(d));
+                    } else if let Some(k) = trouve(&self.fenetre.raccourcis) {
+                        executer(&self.fenetre.enveloppe, &mut self.doc, |d| (self.fenetre.raccourcis[k].1)(d));
+                    }
                 }
             }
             Msg::Fichier(id, chemin) => {
@@ -380,10 +439,10 @@ impl<D: 'static> Moteur<D> {
         Task::batch(taches)
     }
 
-    fn vue(&self) -> Element<'_, Msg> {
+    pub(crate) fn vue(&self) -> Element<'_, Msg> {
         // Les actions de l'affichage precedent ne servent plus.
         self.actions.borrow_mut().clear();
-        let (id, ecran) = &self.fenetre.ecrans[self.fenetre.affiche];
+        let (id, ecran) = &self.fenetre.ecrans[self.ecran()];
         let (id, ecran): (&str, _) = (id, ecran.borrow());
         let mut menus = vec![];
         if let Some(f) = &ecran.menu {
@@ -400,8 +459,14 @@ impl<D: 'static> Moteur<D> {
             f(id, &mut p, &self.doc);
             page = page.push(p.into_element(PANEL_BG)).push(crate::horizontal_separator());
         }
-        let contenu: Vec<Element<'_, Msg>> = ecran.content.iter().map(|n| self.place(n, id)).collect();
+        let contenu: Vec<Element<'_, Msg>> = ecran.content.iter().filter_map(|n| self.place(n, id)).map(|(e, _, _)| e).collect();
         page = page.push(column(contenu).height(Length::Fill));
+        if let Some(f) = &ecran.statusbar {
+            let mut p = Panel::new(&self.actions, true);
+            p.espacement = Some(12);
+            f(id, &mut p, &self.doc);
+            page = page.push(crate::horizontal_separator()).push(p.into_element(MENU_BG));
+        }
         let deroulant = crate::menu_dropdown_sub(&menus, self.menu_ouvert, self.sous_menu, Msg::CloseMenus, Msg::OpenSubmenu);
         let mut couches = stack![page.width(Length::Fill).height(Length::Fill), deroulant];
         for (quand, f, largeur) in &self.fenetre.modales {
@@ -414,35 +479,44 @@ impl<D: 'static> Moteur<D> {
         couches.into()
     }
 
-    /// Une place de l'ecran : un panneau rempli, ou un decoupage.
-    fn place(&self, n: &Node<D>, id: &str) -> Element<'_, Msg> {
+    /// Une place de l'ecran : un panneau rempli, ou un decoupage ; avec la
+    /// largeur et la hauteur fixes demandees par le panneau. `None` : cache.
+    fn place(&self, n: &Node<D>, id: &str) -> Option<(Element<'_, Msg>, Option<f32>, Option<f32>)> {
         match n {
             Node::Panel(f) => {
                 let mut p = Panel::new(&self.actions, false);
                 f(id, &mut p, &self.doc);
-                p.into_element(PANEL_BG)
+                if p.cache {
+                    return None;
+                }
+                let (largeur, hauteur) = (p.largeur, p.hauteur);
+                Some((p.into_element(PANEL_BG), largeur, hauteur))
             }
             Node::Split(s) => {
                 let s = s.borrow();
                 let mut parts: Vec<Element<'_, Msg>> = vec![];
                 for (k, enfant) in s.children.iter().enumerate() {
-                    if k > 0 {
+                    let Some((e, largeur, hauteur)) = self.place(enfant, id) else { continue };
+                    if !parts.is_empty() {
                         parts.push(match s.direction {
                             Direction::Horizontal => crate::vertical_separator(),
                             Direction::Vertical => crate::horizontal_separator(),
                         });
                     }
-                    let poids = s.weights.get(k).copied().unwrap_or(1);
-                    let e = self.place(enfant, id);
+                    let part = Length::FillPortion(s.weights.get(k).copied().unwrap_or(1));
                     parts.push(match s.direction {
-                        Direction::Horizontal => iced::widget::container(e).width(Length::FillPortion(poids)).height(Length::Fill).into(),
-                        Direction::Vertical => iced::widget::container(e).height(Length::FillPortion(poids)).width(Length::Fill).into(),
+                        Direction::Horizontal => iced::widget::container(e).width(largeur.map(Length::Fixed).unwrap_or(part)).height(Length::Fill).into(),
+                        Direction::Vertical => iced::widget::container(e).height(hauteur.map(Length::Fixed).unwrap_or(part)).width(Length::Fill).into(),
                     });
                 }
-                match s.direction {
+                if parts.is_empty() {
+                    return None;
+                }
+                let e = match s.direction {
                     Direction::Horizontal => iced::widget::row(parts).height(Length::Fill).into(),
                     Direction::Vertical => iced::widget::column(parts).width(Length::Fill).into(),
-                }
+                };
+                Some((e, None, None))
             }
         }
     }
@@ -501,8 +575,8 @@ mod tests {
             p.add_text(format!("{}", d.compteur));
             p.add_button("+", |d: &mut Doc| d.compteur += 1);
         });
-        s.add_panel(|_, p: &mut Panel<Doc>, _| p.add_screen_button("Reglages", "reglages"));
-        reglages.add_panel(|_, p: &mut Panel<Doc>, d| p.add_input("Titre", &d.titre, |d: &mut Doc, t| d.titre = t));
+        s.add_panel(|_, p: &mut Panel<Doc>, _| { p.add_screen_button("Reglages", "reglages"); });
+        reglages.add_panel(|_, p: &mut Panel<Doc>, d| { p.add_input("Titre", &d.titre, |d: &mut Doc, t| d.titre = t); });
         w.add_shortcut("Ctrl+R", |d: &mut Doc| d.compteur = 0);
         w.show("accueil");
         Moteur::new(w, Doc::default())
@@ -549,10 +623,10 @@ mod tests {
             p.add_button("aller", |d: &mut Doc| {
                 d.compteur = 7;
                 crate::show_screen("b");
-            })
+            });
         });
         // Modale visible quand le compteur vaut 7 ; son bouton la referme.
-        w.add_modal(|d: &Doc| d.compteur == 7, 300.0, |_, p: &mut Panel<Doc>, _| p.add_button("ok", |d: &mut Doc| d.compteur = 0));
+        w.add_modal(|d: &Doc| d.compteur == 7, 300.0, |_, p: &mut Panel<Doc>, _| { p.add_button("ok", |d: &mut Doc| d.compteur = 0); });
         let mut m = Moteur::new(w, Doc::default());
         let _ = m.vue();
         let _ = m.mise_a_jour(Msg::Action(0));
@@ -579,7 +653,54 @@ mod tests {
         });
         let mut m = Moteur::new(w, Doc::default());
         let _ = m.vue();
-        let _ = m.mise_a_jour(Msg::Ancien(Ancien(std::sync::Arc::new(Ancien_::Plus(2)))));
+        let _ = m.mise_a_jour(Msg::Ancien(Payload(std::sync::Arc::new(Ancien_::Plus(2)))));
         assert_eq!(m.doc.compteur, 2);
+    }
+
+    /// L'ecran suit les donnees ; les raccourcis de l'ecran passent avant ceux
+    /// de la fenetre ; une modale ne laisse passer que « Escape ».
+    #[test]
+    fn ecran_choisi_par_les_donnees_raccourcis_d_ecran_et_modale() {
+        let mut w = Window::new("Essai", 800.0, 600.0);
+        let a = w.add_screen("a");
+        w.add_screen("b");
+        w.screen_from(|d: &Doc| if d.compteur >= 10 { "b" } else { "a" });
+        a.add_shortcut("R", |d: &mut Doc| d.compteur += 10);
+        w.add_shortcut("R", |d: &mut Doc| d.compteur += 1);
+        w.add_shortcut("Escape", |d: &mut Doc| d.titre.clear());
+        w.add_modal(|d: &Doc| !d.titre.is_empty(), 300.0, |_, _, _| {});
+        let mut m = Moteur::new(w, Doc::default());
+        let r = || Msg::Key(Key::Character("r".into()), Modifiers::empty());
+        let _ = m.mise_a_jour(r());
+        assert_eq!((m.doc.compteur, m.ecran()), (10, 1), "raccourci de « a », puis ecran « b »");
+        let _ = m.mise_a_jour(r());
+        assert_eq!(m.doc.compteur, 11, "sur « b », celui de la fenetre");
+        m.doc.titre = "modale".into();
+        let _ = m.mise_a_jour(r());
+        assert_eq!(m.doc.compteur, 11, "la modale garde le clavier");
+        let _ = m.mise_a_jour(Msg::Key(Key::Named(Named::Escape), Modifiers::empty()));
+        assert!(m.doc.titre.is_empty(), "sauf Escape");
+    }
+
+    /// Un panneau cache laisse sa place ; un widget a evenements les rend a son action.
+    #[test]
+    fn panneau_cache_et_evenements_d_un_widget() {
+        let mut w = Window::new("Essai", 800.0, 600.0);
+        let s = w.add_screen("a").add_splitter(Direction::Horizontal, [1, 1]);
+        s.add_panel(|_, p: &mut Panel<Doc>, _| {
+            p.set_width(200.0);
+            p.hide();
+        });
+        s.add_panel(|_, p: &mut Panel<Doc>, d| {
+            p.add_widget(iced::widget::slider(0.0..=10.0, d.compteur as f32, |v| v), |d: &mut Doc, v: f32| d.compteur = v as i32);
+        });
+        let mut m = Moteur::new(w, Doc::default());
+        let _ = m.vue();
+        let _ = m.mise_a_jour(Msg::Event(0, Payload(std::sync::Arc::new(4.0_f32))));
+        assert_eq!(m.doc.compteur, 4);
+        let ecran = m.fenetre.ecrans[0].1.clone();
+        let ecran = ecran.borrow();
+        let (_, largeur, _) = m.place(&ecran.content[0], "a").unwrap();
+        assert_eq!(largeur, None, "seul le second panneau reste : pas de largeur fixe");
     }
 }

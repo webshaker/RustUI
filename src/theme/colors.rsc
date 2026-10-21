@@ -43,3 +43,6 @@ pub const GREEN: Color = Color::from_rgb(0.3, 0.9, 0.3);
 pub const ORANGE: Color = Color::from_rgb(0.9, 0.7, 0.3);
 
 pub const RED: Color = Color::from_rgb(1.0, 0.35, 0.35);
+
+/// Un lien cliquable.
+pub const LINK: Color = Color::from_rgb(0.55, 0.75, 1.0);
