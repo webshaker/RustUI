@@ -79,10 +79,9 @@ Exemple complet : `cargo run --example compteur`.
 
 Les fichiers `.rsc` (classes Crust) sont traduits en Rust standard par
 `crust-build`, dans `build.rs`. Pour l'application qui utilise RustUI, rien ne
-change (l'API est du Rust ordinaire), **mais** `crust-build` est lié par un
-chemin vers le dépôt Crust dans WSL : RustUI ne compile que sur cette machine,
-**WSL lancé**, et seulement par le `[patch]` local (voir plus bas) tant que
-Crust n'est pas publié.
+change : l'API est du Rust ordinaire, et `crust-build` vient du dépôt public
+[webshaker/crust](https://github.com/webshaker/crust), épinglé à une
+révision. Une dépendance git vers RustUI suffit, partout.
 
 ## Ce qu'il y a dedans
 
