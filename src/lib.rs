@@ -51,6 +51,10 @@
 //! aux noms pres. Il ne depend de rien du projet : le deplacer ailleurs sera
 //! une ligne de `Cargo.toml`.
 
+// Convention Crust : un dossier par concept, un fichier par classe
+// (application/Application.rsc donne application::application).
+#![allow(clippy::module_inception)]
+
 // Sources en Crust (`.rsc`) : `theme/` (palette) et `widgets/`. Les anciens
 // chemins (`rust_ui::colors`, `rust_ui::menu`...) restent valables.
 include!(concat!(env!("OUT_DIR"), "/crust/root_lib.rs"));
@@ -64,3 +68,15 @@ pub use menu::{Menu, MenuItem, menu_bar, menu_dropdown};
 pub use modal::{cancel_confirm, error, field, title};
 pub use separator::{horizontal_separator, vertical_separator};
 pub use tree::{Expanded, Node};
+
+// Lancement d'une application : trait, fenetre, boucle.
+pub use application::{Application, Fenetre, Resultat, lancer, quitter};
+
+// Facade : ce dont une application a besoin, sous le nom de RustUI. Elle n'a
+// ainsi pas a dependre d'iced, dont la version n'est choisie qu'ici (les
+// `Element` de RustUI et de l'application sont alors forcement compatibles).
+pub use iced::{advanced, alignment, clipboard, event, font, keyboard, mouse, time, widget, window};
+pub use iced::{
+    Alignment, Background, Border, Color, Element, Font, Length, Padding, Pixels, Point, Rectangle, Renderer, Shadow, Size,
+    Subscription, Task, Theme, Vector,
+};

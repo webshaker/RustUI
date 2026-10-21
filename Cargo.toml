@@ -36,6 +36,15 @@ license = "MIT OR Apache-2.0"
 # separees (Robot-Rust prend `image`, ThermoSim prend `wgpu`).
 iced = { version = "0.13", features = ["advanced"] }
 
+# Options d iced que seules certaines applications utilisent : elles les
+# demandent a RustUI (`rust_ui = { ..., features = ["canvas"] }`) au lieu de
+# dependre d iced elles-memes.
+[features]
+canvas = ["iced/canvas"]
+tokio = ["iced/tokio"]
+image = ["iced/image"]
+wgpu = ["iced/wgpu"]
+
 [build-dependencies]
 # Crust (classes .rsc -> Rust standard), au moment de la compilation seulement :
 # ce n'est pas une dependance du code, le contrat « une seule dependance »
