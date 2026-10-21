@@ -40,7 +40,7 @@ iced = { version = "0.13", features = ["advanced"] }
 # text_editor d iced : il en utilise les rouages internes. Rien de metier.
 iced_core = "0.13"
 iced_graphics = "0.13"
-# Option `essai` : rendu logiciel des tests d interface (rust_ui::essai).
+# Option `testing` : rendu logiciel des tests d interface (rust_ui::testing).
 iced_tiny_skia = { version = "0.13", optional = true }
 tiny-skia = { version = "0.11", optional = true }
 
@@ -52,7 +52,7 @@ canvas = ["iced/canvas"]
 tokio = ["iced/tokio"]
 image = ["iced/image"]
 wgpu = ["iced/wgpu"]
-essai = ["dep:iced_tiny_skia", "dep:tiny-skia"]
+testing = ["dep:iced_tiny_skia", "dep:tiny-skia"]
 
 [build-dependencies]
 # Crust (classes .rsc -> Rust standard), au moment de la compilation seulement :

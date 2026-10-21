@@ -7,13 +7,13 @@ use iced::advanced::text::highlighter::{self, Highlighter};
 
 /// Ce qui change la coloration : lignes (0 = la premiere).
 #[derive(Debug, Clone, PartialEq, Default)]
-pub class Reglages {
-    pub arret: Option<usize>,
-    pub points: Vec<usize>,
+pub class HighlightSettings {
+    pub stopped: Option<usize>,
+    pub breakpoints: Vec<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Genre {
+pub enum CToken {
     Commentaire,
     Chaine,
     Preprocesseur,
@@ -28,21 +28,21 @@ pub enum Genre {
     PointArret,
 }
 
-impl Genre {
-    pub fn format(g: &Genre, _theme: &iced::Theme) -> highlighter::Format<iced::Font> {
+impl CToken {
+    pub fn format(g: &CToken, _theme: &iced::Theme) -> highlighter::Format<iced::Font> {
         let couleur = match g {
-            Genre::Commentaire => Color::from_rgb(0.42, 0.6, 0.33),
-            Genre::Chaine => Color::from_rgb(0.81, 0.57, 0.47),
-            Genre::Preprocesseur => Color::from_rgb(0.77, 0.53, 0.75),
-            Genre::MotCle => Color::from_rgb(0.34, 0.61, 0.84),
-            Genre::Type => Color::from_rgb(0.31, 0.79, 0.69),
-            Genre::Nombre => Color::from_rgb(0.71, 0.81, 0.66),
-            Genre::Fonction => Color::from_rgb(0.86, 0.86, 0.67),
-            Genre::Macro => Color::from_rgb(0.31, 0.75, 1.0),
-            Genre::Arret => Color::WHITE,
-            Genre::PointArret => Color::from_rgb(1.0, 0.45, 0.45),
+            CToken::Commentaire => Color::from_rgb(0.42, 0.6, 0.33),
+            CToken::Chaine => Color::from_rgb(0.81, 0.57, 0.47),
+            CToken::Preprocesseur => Color::from_rgb(0.77, 0.53, 0.75),
+            CToken::MotCle => Color::from_rgb(0.34, 0.61, 0.84),
+            CToken::Type => Color::from_rgb(0.31, 0.79, 0.69),
+            CToken::Nombre => Color::from_rgb(0.71, 0.81, 0.66),
+            CToken::Fonction => Color::from_rgb(0.86, 0.86, 0.67),
+            CToken::Macro => Color::from_rgb(0.31, 0.75, 1.0),
+            CToken::Arret => Color::WHITE,
+            CToken::PointArret => Color::from_rgb(1.0, 0.45, 0.45),
         };
-        let gras = matches!(g, Genre::Arret).then_some(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::MONOSPACE });
+        let gras = matches!(g, CToken::Arret).then_some(iced::Font { weight: iced::font::Weight::Bold, ..iced::Font::MONOSPACE });
         highlighter::Format { color: Some(couleur), font: gras }
     }
 }
@@ -57,23 +57,23 @@ const TYPES: &[&str] = &[
     "int64_t", "uint8_t", "uint16_t", "uint32_t", "uint64_t",
 ];
 
-pub class ColorationC {
-    reglages: Reglages,
+pub class CHighlighter {
+    settings: HighlightSettings,
     ligne: usize,
     /// Pour chaque ligne deja vue : commence-t-elle dans un commentaire /* */ ?
     dans_commentaire: Vec<bool>,
 
     impl Highlighter {
-        type Settings = Reglages;
-        type Highlight = Genre;
-        type Iterator<'a> = std::vec::IntoIter<(Range<usize>, Genre)>;
+        type Settings = HighlightSettings;
+        type Highlight = CToken;
+        type Iterator<'a> = std::vec::IntoIter<(Range<usize>, CToken)>;
 
-        fn new(reglages: &Reglages) -> Self {
-            ColorationC { reglages: reglages.clone(), ligne: 0, dans_commentaire: vec![false] }
+        fn new(settings: &HighlightSettings) -> Self {
+            CHighlighter { settings: settings.clone(), ligne: 0, dans_commentaire: vec![false] }
         }
 
-        fn update(&mut self, reglages: &Reglages) {
-            self.reglages = reglages.clone();
+        fn update(&mut self, settings: &HighlightSettings) {
+            self.settings = settings.clone();
             self.change_line(0);
         }
 
@@ -90,11 +90,11 @@ pub class ColorationC {
             self.dans_commentaire.push(fin_commentaire);
             self.ligne = n + 1;
             // Les marques du debogage passent avant la syntaxe : toute la ligne.
-            if self.reglages.arret == Some(n) {
-                return vec![(0..texte.len(), Genre::Arret)].into_iter();
+            if self.settings.stopped == Some(n) {
+                return vec![(0..texte.len(), CToken::Arret)].into_iter();
             }
-            if self.reglages.points.contains(&n) {
-                return vec![(0..texte.len(), Genre::PointArret)].into_iter();
+            if self.settings.breakpoints.contains(&n) {
+                return vec![(0..texte.len(), CToken::PointArret)].into_iter();
             }
             spans.into_iter()
         }
@@ -106,7 +106,7 @@ pub class ColorationC {
 }
 
 /// Les morceaux colores d'une ligne, et si elle finit dans un commentaire /* */.
-fn colorer(texte: &str, mut dans_commentaire: bool) -> (Vec<(Range<usize>, Genre)>, bool) {
+fn colorer(texte: &str, mut dans_commentaire: bool) -> (Vec<(Range<usize>, CToken)>, bool) {
     let o = texte.as_bytes();
     let mut spans = Vec::new();
     let mut i = 0;
@@ -115,19 +115,19 @@ fn colorer(texte: &str, mut dans_commentaire: bool) -> (Vec<(Range<usize>, Genre
     while i < o.len() {
         if dans_commentaire {
             let fin = texte[i..].find("*/").map(|k| i + k + 2).unwrap_or(o.len());
-            spans.push((i..fin, Genre::Commentaire));
+            spans.push((i..fin, CToken::Commentaire));
             dans_commentaire = fin == o.len() && !texte[i..].contains("*/");
             i = fin;
             continue;
         }
         let c = o[i];
         if texte[i..].starts_with("//") {
-            spans.push((i..o.len(), Genre::Commentaire));
+            spans.push((i..o.len(), CToken::Commentaire));
             break;
         }
         if texte[i..].starts_with("/*") {
             dans_commentaire = true;
-            spans.push((i..i + 2, Genre::Commentaire));
+            spans.push((i..i + 2, CToken::Commentaire));
             i += 2;
             continue;
         }
@@ -137,14 +137,14 @@ fn colorer(texte: &str, mut dans_commentaire: bool) -> (Vec<(Range<usize>, Genre
                 j += if o[j] == b'\\' { 2 } else { 1 };
             }
             let fin = (j + 1).min(o.len());
-            spans.push((i..fin, Genre::Chaine));
+            spans.push((i..fin, CToken::Chaine));
             i = fin;
             continue;
         }
         if directive {
             let suite = texte[i..].find(['"', '/']).map(|k| i + k).unwrap_or(o.len());
             let fin = if suite == i { i + 1 } else { suite };
-            spans.push((i..fin, Genre::Preprocesseur));
+            spans.push((i..fin, CToken::Preprocesseur));
             i = fin;
             continue;
         }
@@ -153,7 +153,7 @@ fn colorer(texte: &str, mut dans_commentaire: bool) -> (Vec<(Range<usize>, Genre
             while j < o.len() && (o[j].is_ascii_alphanumeric() || o[j] == b'.') {
                 j += 1;
             }
-            spans.push((i..j, Genre::Nombre));
+            spans.push((i..j, CToken::Nombre));
             i = j;
             continue;
         }
@@ -165,13 +165,13 @@ fn colorer(texte: &str, mut dans_commentaire: bool) -> (Vec<(Range<usize>, Genre
             let mot = &texte[i..j];
             let suivi_de_parenthese = texte[j..].trim_start().starts_with('(');
             let genre = if MOTS_CLES.contains(&mot) {
-                Some(Genre::MotCle)
+                Some(CToken::MotCle)
             } else if TYPES.contains(&mot) || mot.ends_with("_t") {
-                Some(Genre::Type)
+                Some(CToken::Type)
             } else if mot.len() > 1 && mot.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_') {
-                Some(Genre::Macro)
+                Some(CToken::Macro)
             } else if suivi_de_parenthese {
-                Some(Genre::Fonction)
+                Some(CToken::Fonction)
             } else {
                 None
             };
@@ -191,7 +191,7 @@ fn colorer(texte: &str, mut dans_commentaire: bool) -> (Vec<(Range<usize>, Genre
 mod tests {
     use super::*;
 
-    fn genres(t: &str) -> Vec<(&str, Genre)> {
+    fn genres(t: &str) -> Vec<(&str, CToken)> {
         colorer(t, false).0.into_iter().map(|(r, g)| (&t[r], g)).collect()
     }
 
@@ -200,23 +200,23 @@ mod tests {
         assert_eq!(
             genres("static int x = gpio_get_level(PIN_MAITRE); // fin"),
             [
-                ("static", Genre::MotCle),
-                ("int", Genre::Type),
-                ("gpio_get_level", Genre::Fonction),
-                ("PIN_MAITRE", Genre::Macro),
-                ("// fin", Genre::Commentaire)
+                ("static", CToken::MotCle),
+                ("int", CToken::Type),
+                ("gpio_get_level", CToken::Fonction),
+                ("PIN_MAITRE", CToken::Macro),
+                ("// fin", CToken::Commentaire)
             ]
         );
-        assert_eq!(genres("ESP_LOGI(TAG, \"a \\\" b\");")[2], ("\"a \\\" b\"", Genre::Chaine));
-        assert_eq!(genres("#include \"esp_log.h\""), [("#include ", Genre::Preprocesseur), ("\"esp_log.h\"", Genre::Chaine)]);
+        assert_eq!(genres("ESP_LOGI(TAG, \"a \\\" b\");")[2], ("\"a \\\" b\"", CToken::Chaine));
+        assert_eq!(genres("#include \"esp_log.h\""), [("#include ", CToken::Preprocesseur), ("\"esp_log.h\"", CToken::Chaine)]);
     }
 
     #[test]
     fn un_commentaire_sur_plusieurs_lignes() {
         let (s, suite) = colorer("x = 1; /* debut", false);
-        assert!(suite && s.last().unwrap().1 == Genre::Commentaire);
+        assert!(suite && s.last().unwrap().1 == CToken::Commentaire);
         let (s, suite) = colorer("fin */ y = 2;", true);
         assert!(!suite);
-        assert_eq!(s[0], (0..6, Genre::Commentaire));
+        assert_eq!(s[0], (0..6, CToken::Commentaire));
     }
 }

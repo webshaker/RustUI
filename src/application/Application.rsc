@@ -6,13 +6,13 @@
 //! ```ignore
 //! impl rust_ui::Application for App {
 //!     type Message = Message;
-//!     fn titre(&self) -> String { "Mon outil".into() }
-//!     fn mise_a_jour(&mut self, m: Message) -> rust_ui::Task<Message> { ... }
-//!     fn vue(&self) -> rust_ui::Element<'_, Message> { ... }
+//!     fn title(&self) -> String { "Mon outil".into() }
+//!     fn update(&mut self, m: Message) -> rust_ui::Task<Message> { ... }
+//!     fn view(&self) -> rust_ui::Element<'_, Message> { ... }
 //! }
 //!
-//! fn main() -> rust_ui::Resultat {
-//!     rust_ui::lancer(rust_ui::Fenetre::new(1600.0, 1000.0), App::new)
+//! fn main() -> rust_ui::AppResult {
+//!     rust_ui::new_app(rust_ui::Window::new(1600.0, 1000.0), App::new)
 //! }
 //! ```
 
@@ -24,60 +24,60 @@ pub trait Application: Sized + 'static {
     type Message: std::fmt::Debug + Send + 'static;
 
     /// Titre de la fenetre.
-    fn titre(&self) -> String;
+    fn title(&self) -> String;
 
     /// Traite un evenement ; la tache rendue peut en produire d'autres.
-    fn mise_a_jour(&mut self, message: Self::Message) -> Task<Self::Message>;
+    fn update(&mut self, message: Self::Message) -> Task<Self::Message>;
 
     /// Ce qu'on affiche.
-    fn vue(&self) -> Element<'_, Self::Message>;
+    fn view(&self) -> Element<'_, Self::Message>;
 
     /// Evenements exterieurs (clavier, minuterie...). Aucun par defaut.
-    fn abonnements(&self) -> Subscription<Self::Message> {
+    fn subscription(&self) -> Subscription<Self::Message> {
         Subscription::none()
     }
 }
 
 /// La fenetre principale.
 #[derive(Debug, Clone, Copy)]
-pub class Fenetre {
-    pub largeur: f32,
-    pub hauteur: f32,
+pub class Window {
+    pub width: f32,
+    pub height: f32,
     /// La croix ne ferme pas : l'application recoit la demande et decide
-    /// (par exemple pour proteger un document non enregistre). Elle quitte
-    /// alors avec `rust_ui::quitter()`.
-    pub fermeture_manuelle: bool,
+    /// (par exemple pour proteger un document non enregistre), puis quitte
+    /// avec `rust_ui::exit()`.
+    pub manual_close: bool,
 
-    pub fn new(largeur: f32, hauteur: f32) -> Self {
-        Self { largeur, hauteur, fermeture_manuelle: false }
+    pub fn new(width: f32, height: f32) -> Self {
+        Self { width, height, manual_close: false }
     }
 
-    /// Voir `fermeture_manuelle`.
-    pub fn fermeture_manuelle(mut self) -> Self {
-        self.fermeture_manuelle = true;
+    /// Voir `manual_close`.
+    pub fn manual_close(mut self) -> Self {
+        self.manual_close = true;
         self
     }
 }
 
-/// Resultat de `lancer`.
-pub type Resultat = iced::Result;
+/// Resultat de `new_app`.
+pub type AppResult = iced::Result;
 
 /// Ouvre la fenetre et fait tourner l'application jusqu'a sa fermeture.
 /// Theme sombre et anticrenelage, communs a toutes les applications RustUI.
-pub fn lancer<A: Application>(fenetre: Fenetre, demarrer: impl FnOnce() -> (A, Task<A::Message>) + 'static) -> Resultat {
-    iced::application(A::titre, A::mise_a_jour, A::vue)
-        .subscription(A::abonnements)
+pub fn new_app<A: Application>(win: Window, boot: impl FnOnce() -> (A, Task<A::Message>) + 'static) -> AppResult {
+    iced::application(A::title, A::update, A::view)
+        .subscription(A::subscription)
         .theme(|_| Theme::Dark)
         .antialiasing(true)
         .window(window::Settings {
-            size: iced::Size::new(fenetre.largeur, fenetre.hauteur),
-            exit_on_close_request: !fenetre.fermeture_manuelle,
+            size: iced::Size::new(win.width, win.height),
+            exit_on_close_request: !win.manual_close,
             ..Default::default()
         })
-        .run_with(demarrer)
+        .run_with(boot)
 }
 
-/// Ferme l'application (apres une `fermeture_manuelle`).
-pub fn quitter<Message>() -> Task<Message> {
+/// Ferme l'application (apres un `manual_close`).
+pub fn exit<Message>() -> Task<Message> {
     iced::exit()
 }

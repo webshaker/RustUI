@@ -67,10 +67,12 @@ pub use colors::*;
 pub use menu::{Menu, MenuItem, menu_bar, menu_dropdown};
 pub use modal::{cancel_confirm, error, field, title};
 pub use separator::{horizontal_separator, vertical_separator};
+#[cfg(feature = "canvas")]
+pub use widgets::Curve;
 pub use tree::{Expanded, Node};
 
 // Lancement d'une application : trait, fenetre, boucle.
-pub use application::{Application, Fenetre, Resultat, lancer, quitter};
+pub use application::{AppResult, Application, Window, exit, new_app};
 
 // Facade : ce dont une application a besoin, sous le nom de RustUI. Elle n'a
 // ainsi pas a dependre d'iced, dont la version n'est choisie qu'ici (les

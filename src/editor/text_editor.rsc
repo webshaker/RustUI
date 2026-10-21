@@ -1337,7 +1337,7 @@ fn stopped_regions(editor: &iced_graphics::text::Editor, line: usize, bounds: Re
     }).collect()
 }
 
-#[cfg(any(test, feature = "essai"))]
+#[cfg(any(test, feature = "testing"))]
 impl Content {
     /// Met le texte en page sans fenetre, comme a l'affichage (tests).
     pub fn test_layout(&self, width: f32, height: f32) {

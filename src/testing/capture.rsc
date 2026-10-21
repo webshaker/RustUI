@@ -1,29 +1,29 @@
-//! Outils de test d'interface, sans ouvrir de fenetre (option `essai`) :
+//! Outils de test d'interface, sans ouvrir de fenetre (option `testing`) :
 //! mise en page d'une vue a une taille donnee, et capture PNG par le moteur
 //! logiciel. Pour verifier qu'une vue tient dans la fenetre, ou la regarder.
 //!
 //! ```ignore
 //! let vue = app.view();
-//! let racine = rust_ui::essai::mise_en_page(&vue, 1280, 800);
+//! let racine = rust_ui::testing::layout_of(&vue, 1280, 800);
 //! assert_eq!(racine.size(), rust_ui::Size::new(1280.0, 800.0));
-//! rust_ui::essai::capturer_png(&vue, 1280, 800, "capture.png".as_ref());
+//! rust_ui::testing::capture_png(&vue, 1280, 800, "capture.png".as_ref());
 //! ```
 
-#[cfg(feature = "essai")]
+#[cfg(feature = "testing")]
 use iced::advanced::layout::{self, Layout};
-#[cfg(feature = "essai")]
+#[cfg(feature = "testing")]
 use iced::advanced::renderer::Style;
-#[cfg(feature = "essai")]
+#[cfg(feature = "testing")]
 use iced::advanced::widget::Tree;
-#[cfg(feature = "essai")]
+#[cfg(feature = "testing")]
 use iced::{Color, Element, Font, Pixels, Rectangle, Renderer, Size, Theme, mouse};
 
-#[cfg(feature = "essai")]
+#[cfg(feature = "testing")]
 fn moteur() -> Renderer {
     Renderer::Secondary(iced_tiny_skia::Renderer::new(Font::DEFAULT, Pixels(16.0)))
 }
 
-#[cfg(feature = "essai")]
+#[cfg(feature = "testing")]
 fn disposer<M>(vue: &Element<'_, M>, renderer: &Renderer, largeur: u32, hauteur: u32) -> (Tree, layout::Node) {
     let mut arbre = Tree::new(vue);
     let taille = Size::new(largeur as f32, hauteur as f32);
@@ -32,14 +32,14 @@ fn disposer<M>(vue: &Element<'_, M>, renderer: &Renderer, largeur: u32, hauteur:
 }
 
 /// La mise en page de `vue` dans une fenetre de `largeur` x `hauteur` pixels.
-#[cfg(feature = "essai")]
-pub fn mise_en_page<M>(vue: &Element<'_, M>, largeur: u32, hauteur: u32) -> layout::Node {
+#[cfg(feature = "testing")]
+pub fn layout_of<M>(vue: &Element<'_, M>, largeur: u32, hauteur: u32) -> layout::Node {
     disposer(vue, &moteur(), largeur, hauteur).1
 }
 
 /// Dessine `vue` (theme sombre, fond `VIEW_BG`) et l'enregistre en PNG.
-#[cfg(feature = "essai")]
-pub fn capturer_png<M>(vue: &Element<'_, M>, largeur: u32, hauteur: u32, chemin: &std::path::Path) {
+#[cfg(feature = "testing")]
+pub fn capture_png<M>(vue: &Element<'_, M>, largeur: u32, hauteur: u32, chemin: &std::path::Path) {
     let mut renderer = moteur();
     let (arbre, racine) = disposer(vue, &renderer, largeur, hauteur);
     let zone = Rectangle::with_size(Size::new(largeur as f32, hauteur as f32));
