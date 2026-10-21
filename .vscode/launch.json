@@ -1,0 +1,19 @@
+{
+    // F5 : lance l'exemple choisi (CodeLLDB). breakpointMode "file" : les
+    // points d'arret des .rsc sont designes par nom de fichier (Crust).
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Exemple compteur",
+            "cargo": {
+                "args": ["build", "--example", "compteur"],
+                "filter": { "name": "compteur", "kind": "example" }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "breakpointMode": "file"
+        }
+    ]
+}
