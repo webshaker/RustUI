@@ -17,6 +17,7 @@ pub enum Msg {
     Toggle(usize, bool),
     Show(&'static str),
     OpenMenu(usize),
+    OpenSubmenu(usize),
     CloseMenus,
     Key(iced::keyboard::Key, iced::keyboard::Modifiers),
     Fichier(u64, Option<std::path::PathBuf>),
@@ -167,7 +168,7 @@ pub class MenuBar<'a, D> {
     }
 
     /// Un menu de la barre ; on y ajoute ses entrees a la suite.
-    pub fn menu(&mut self, label: &'static str) -> MenuBuilder<'_, 'a, D> {
+    pub fn menu(&mut self, label: impl Into<std::borrow::Cow<'static, str>>) -> MenuBuilder<'_, 'a, D> {
         self.menus.push(crate::Menu::new(label, vec![]));
         MenuBuilder { bar: self }
     }
@@ -182,28 +183,54 @@ pub class MenuBuilder<'b, 'a, D> {
     }
 
     /// Une entree ; `action` modifie les donnees.
-    pub fn item(mut self, label: &'static str, action: impl Fn(&mut D) + 'static) -> Self {
+    pub fn item(mut self, label: impl Into<std::borrow::Cow<'static, str>>, action: impl Fn(&mut D) + 'static) -> Self {
         let i = enregistrer(self.bar.actions, Action::Simple(Box::new(action)));
         self.pousser(crate::MenuItem::new(label, Msg::Action(i)));
         self
     }
 
     /// Une entree grisee quand `enabled` est faux.
-    pub fn item_if(mut self, label: &'static str, enabled: bool, action: impl Fn(&mut D) + 'static) -> Self {
+    pub fn item_if(mut self, label: impl Into<std::borrow::Cow<'static, str>>, enabled: bool, action: impl Fn(&mut D) + 'static) -> Self {
         let i = enregistrer(self.bar.actions, Action::Simple(Box::new(action)));
         self.pousser(crate::MenuItem::when(label, enabled, Msg::Action(i)));
         self
     }
 
+    /// Un sous-menu, ouvert a droite au survol ; `fill` y ajoute ses entrees.
+    pub fn submenu(mut self, label: impl Into<std::borrow::Cow<'static, str>>, fill: impl FnOnce(&mut SubMenu<'a, D>)) -> Self {
+        let mut s = SubMenu { items: vec![], actions: self.bar.actions };
+        fill(&mut s);
+        self.pousser(crate::MenuItem::submenu(label, s.items));
+        self
+    }
+
     /// Une entree qui affiche un autre ecran.
-    pub fn screen_item(mut self, label: &'static str, screen: &'static str) -> Self {
+    pub fn screen_item(mut self, label: impl Into<std::borrow::Cow<'static, str>>, screen: &'static str) -> Self {
         self.pousser(crate::MenuItem::new(label, Msg::Show(screen)));
         self
     }
 
     /// Une entree qui ferme l'application.
-    pub fn quit_item(mut self, label: &'static str) -> Self {
+    pub fn quit_item(mut self, label: impl Into<std::borrow::Cow<'static, str>>) -> Self {
         self.pousser(crate::MenuItem::new(label, Msg::Quit));
         self
+    }
+}
+
+/// Les entrees d'un sous-menu.
+pub class SubMenu<'a, D> {
+    pub(crate) items: Vec<crate::MenuItem<Msg>>,
+    pub(crate) actions: &'a Actions<D>,
+
+    /// Une entree ; `action` modifie les donnees.
+    pub fn item(&mut self, label: impl Into<std::borrow::Cow<'static, str>>, action: impl Fn(&mut D) + 'static) {
+        let i = enregistrer(self.actions, Action::Simple(Box::new(action)));
+        self.items.push(crate::MenuItem::new(label, Msg::Action(i)));
+    }
+
+    /// Une entree grisee quand `enabled` est faux.
+    pub fn item_if(&mut self, label: impl Into<std::borrow::Cow<'static, str>>, enabled: bool, action: impl Fn(&mut D) + 'static) {
+        let i = enregistrer(self.actions, Action::Simple(Box::new(action)));
+        self.items.push(crate::MenuItem::when(label, enabled, Msg::Action(i)));
     }
 }

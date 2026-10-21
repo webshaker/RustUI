@@ -31,6 +31,8 @@
 //! chaque libelle ajoute — et se tromper y decale un deroulant sans que rien
 //! ne le signale.
 
+use std::borrow::Cow;
+
 use iced::widget::container::Style;
 use iced::widget::{Space, button, column, container, mouse_area, row, text};
 use iced::{Alignment, Border, Color, Element, Length, Padding};
@@ -51,18 +53,25 @@ const LARGEUR_CARACTERE: f32 = 7.3;
 
 /// Une ligne de deroulant.
 pub class MenuItem<Message> {
-    pub label: &'static str,
+    pub label: Cow<'static, str>,
     /// `None` : l'item est grise, sans action.
     pub message: Option<Message>,
+    /// Sous-menu : s'ouvre a droite au survol.
+    pub children: Vec<MenuItem<Message>>,
 
-    pub fn new(label: &'static str, message: Message) -> Self {
-        Self { label, message: Some(message) }
+    pub fn new(label: impl Into<Cow<'static, str>>, message: Message) -> Self {
+        Self { label: label.into(), message: Some(message), children: vec![] }
+    }
+
+    /// Un sous-menu ; grise s'il est vide.
+    pub fn submenu(label: impl Into<Cow<'static, str>>, children: Vec<MenuItem<Message>>) -> Self {
+        Self { label: label.into(), message: None, children }
     }
 
     /// Actif seulement si la condition tient. Remplace les fermetures
     /// `si_projet(...)` que chaque appelant reecrivait.
-    pub fn when(label: &'static str, condition: bool, message: Message) -> Self {
-        Self { label, message: condition.then_some(message) }
+    pub fn when(label: impl Into<Cow<'static, str>>, condition: bool, message: Message) -> Self {
+        Self { label: label.into(), message: condition.then_some(message), children: vec![] }
     }
 }
 
@@ -76,7 +85,7 @@ pub(super) fn item_button<'a, Message: Clone + 'a>(
     padding: [u16; 2],
 ) -> Element<'a, Message> {
     let actif = item.message.is_some();
-    let mut b = button(text(item.label).size(13))
+    let mut b = button(text(item.label.to_string()).size(13))
         .width(Length::Fill)
         .padding(padding)
         .style(move |_theme, statut| {
@@ -99,11 +108,11 @@ pub(super) fn item_button<'a, Message: Clone + 'a>(
 
 /// Un menu de la barre, et ce qu'il deroule.
 pub class Menu<Message> {
-    pub label: &'static str,
+    pub label: Cow<'static, str>,
     pub items: Vec<MenuItem<Message>>,
 
-    pub fn new(label: &'static str, items: Vec<MenuItem<Message>>) -> Self {
-        Self { label, items }
+    pub fn new(label: impl Into<Cow<'static, str>>, items: Vec<MenuItem<Message>>) -> Self {
+        Self { label: label.into(), items }
     }
 
     fn largeur(&self) -> f32 {
@@ -118,7 +127,7 @@ fn decalage<Message>(menus: &[Menu<Message>], i: usize) -> f32 {
 }
 
 fn bar_button<'a, Message: Clone + 'a>(
-    label: &'static str,
+    label: String,
     est_ouvert: bool,
     message: Message,
 ) -> Element<'a, Message> {
@@ -156,7 +165,7 @@ pub fn menu_bar<'a, Message: Clone + 'a>(
     let barre = row(menus
         .iter()
         .enumerate()
-        .map(|(i, m)| bar_button(m.label, ouvert == Some(i), basculer(i))))
+        .map(|(i, m)| bar_button(m.label.to_string(), ouvert == Some(i), basculer(i))))
     .spacing(2)
     .padding(4);
 
@@ -179,28 +188,66 @@ pub fn menu_dropdown<'a, Message: Clone + 'a>(
     ouvert: Option<usize>,
     fermer: Message,
 ) -> Element<'a, Message> {
-    let Some(i) = ouvert.filter(|i| *i < menus.len()) else {
-        return Space::new(0, 0).into();
-    };
+    let f = fermer.clone();
+    menu_dropdown_sub(menus, ouvert, None, fermer, move |_| f.clone())
+}
 
-    let boutons: Vec<Element<'a, Message>> =
-        menus[i].items.iter().map(|item| item_button(item, [8, 20])).collect();
+/// Hauteur d'une ligne de deroulant (padding 8 + texte 13).
+const HAUTEUR_ITEM: f32 = 32.0;
 
-    let contenu = container(column(boutons))
-        .width(Length::Fill)
-        .style(|_| Style {
-            background: Some(MENU_BG.into()),
-            ..Default::default()
-        });
-
+/// Une colonne de boutons sur fond de menu, bordee de noir.
+fn boite_menu<'a, Message: 'a>(boutons: Vec<Element<'a, Message>>, largeur: f32) -> Element<'a, Message> {
+    let contenu = container(column(boutons)).width(Length::Fill).style(|_| Style {
+        background: Some(MENU_BG.into()),
+        ..Default::default()
+    });
     // Bordure noire a gauche, en bas, a droite : un padding sur fond noir.
-    let boite = container(contenu)
-        .width(LARGEUR_DEROULANT)
+    container(contenu)
+        .width(largeur)
         .padding(Padding { top: 0.0, left: 1.0, right: 1.0, bottom: 1.0 })
         .style(|_| Style {
             background: Some(Color::BLACK.into()),
             ..Default::default()
-        });
+        })
+        .into()
+}
+
+/// Comme `menu_dropdown`, avec des sous-menus : survoler une entree qui en a
+/// un envoie `ouvrir_sous(k)` ; `sous` est l'entree dont le sous-menu est ouvert.
+pub fn menu_dropdown_sub<'a, Message: Clone + 'a>(
+    menus: &[Menu<Message>],
+    ouvert: Option<usize>,
+    sous: Option<usize>,
+    fermer: Message,
+    ouvrir_sous: impl Fn(usize) -> Message,
+) -> Element<'a, Message> {
+    let Some(i) = ouvert.filter(|i| *i < menus.len()) else {
+        return Space::new(0, 0).into();
+    };
+
+    let boutons: Vec<Element<'a, Message>> = menus[i]
+        .items
+        .iter()
+        .enumerate()
+        .map(|(k, item)| {
+            if item.children.is_empty() {
+                return item_button(item, [8, 20]);
+            }
+            // Entree a sous-menu : active si une de ses entrees l'est, ouverte au survol.
+            let actif = item.children.iter().any(|c| c.message.is_some());
+            let tete = MenuItem { label: format!("{}  ›", item.label).into(), message: actif.then(|| ouvrir_sous(k)), children: vec![] };
+            mouse_area(item_button(&tete, [8, 20])).on_enter(ouvrir_sous(k)).into()
+        })
+        .collect();
+    let mut groupes = row![boite_menu(boutons, LARGEUR_DEROULANT)];
+    if let Some(k) = sous.filter(|k| menus[i].items.get(*k).is_some_and(|it| !it.children.is_empty())) {
+        let enfants = &menus[i].items[k].children;
+        let largeur = enfants.iter().map(|c| c.label.chars().count() as f32 * LARGEUR_CARACTERE + 42.0).fold(LARGEUR_DEROULANT, f32::max);
+        let boutons = enfants.iter().map(|c| item_button(c, [8, 20])).collect();
+        // Colle au deroulant : le passage de la souris ne rencontre aucune zone de fermeture.
+        groupes = groupes.push(column![Space::with_height(k as f32 * HAUTEUR_ITEM), boite_menu(boutons, largeur)]);
+    }
+    let boite: Element<'a, Message> = groupes.into();
 
     let positionne = container(boite)
         .width(Length::Fill)

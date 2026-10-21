@@ -104,6 +104,8 @@ type TitreSelon<D> = Box<dyn Fn(&D) -> String>;
 type Raccourcis<D> = Vec<(Raccourci, Box<dyn Fn(&mut D)>)>;
 type Condition<D> = Box<dyn Fn(&D) -> bool>;
 type Rappel<D> = Box<dyn Fn(&mut D)>;
+/// Enveloppe de toutes les actions (historique d'annulation, recalculs...).
+type Enveloppe<D> = Box<dyn Fn(&mut D, &mut dyn FnMut(&mut D))>;
 type Modales<D> = Vec<(Condition<D>, Fill<D>, f32)>;
 type Minuteries<D> = Vec<(u64, Condition<D>, Box<dyn Fn(&mut D)>)>;
 /// Passerelle vers une interface a `Message` (le temps d'une migration).
@@ -126,12 +128,20 @@ pub class Window<D> {
     pub(crate) passerelle: Option<Passerelle<D>>,
     pub(crate) abonnements_anciens: Option<AbonnementsAnciens<D>>,
     pub(crate) premiere_tache: Option<Task<Msg>>,
+    pub(crate) enveloppe: Option<Enveloppe<D>>,
 
     pub fn new(title: impl Into<String>, width: f32, height: f32) -> Self {
         Self {
             titre: title.into(), titre_selon: None, largeur: width, hauteur: height, ecrans: vec![], affiche: 0, raccourcis: vec![],
-            modales: vec![], minuteries: vec![], sur_fermeture: None, passerelle: None, abonnements_anciens: None, premiere_tache: None,
+            modales: vec![], minuteries: vec![], sur_fermeture: None, passerelle: None, abonnements_anciens: None, premiere_tache: None, enveloppe: None,
         }
+    }
+
+    /// Toute action de l'interface (bouton, menu, raccourci, minuterie, suite
+    /// d'un dialogue) passe par `around` : par exemple pour garder l'etat
+    /// precedent des donnees (annuler) ou recalculer ce qui en depend.
+    pub fn around_actions(&mut self, around: impl Fn(&mut D, &mut dyn FnMut(&mut D)) + 'static) {
+        self.enveloppe = Some(Box::new(around));
     }
 
     /// Une fenetre modale, par-dessus l'ecran tant que `when` est vrai
@@ -229,11 +239,27 @@ pub class Window<D> {
     }
 }
 
+/// Une action, passee par l'enveloppe si la fenetre en a une.
+fn executer<D>(enveloppe: &Option<Enveloppe<D>>, doc: &mut D, action: impl FnOnce(&mut D)) {
+    match enveloppe {
+        Some(e) => {
+            let mut action = Some(action);
+            e(doc, &mut |d| {
+                if let Some(a) = action.take() {
+                    a(d)
+                }
+            });
+        }
+        None => action(doc),
+    }
+}
+
 /// Ce qui tourne : la description de la fenetre, les donnees, l'etat de l'interface.
 pub(crate) struct Moteur<D> {
     fenetre: Window<D>,
     doc: D,
     menu_ouvert: Option<usize>,
+    sous_menu: Option<usize>,
     actions: Actions<D>,
     /// Suites des dialogues de fichier en cours (`Box<dyn Fn(&mut D, PathBuf)>`).
     suites: std::collections::HashMap<u64, Box<dyn std::any::Any>>,
@@ -242,7 +268,7 @@ pub(crate) struct Moteur<D> {
 
 impl<D: 'static> Moteur<D> {
     pub(crate) fn new(fenetre: Window<D>, doc: D) -> Self {
-        Moteur { fenetre, doc, menu_ouvert: None, actions: RefCell::new(vec![]), suites: Default::default(), prochaine_suite: 0 }
+        Moteur { fenetre, doc, menu_ouvert: None, sous_menu: None, actions: RefCell::new(vec![]), suites: Default::default(), prochaine_suite: 0 }
     }
 
     fn titre(&self) -> String {
@@ -262,48 +288,56 @@ impl<D: 'static> Moteur<D> {
         match m {
             Msg::Action(i) => {
                 if let Some(Action::Simple(f)) = self.actions.borrow().get(i) {
-                    f(&mut self.doc);
+                    executer(&self.fenetre.enveloppe, &mut self.doc, |d| f(d));
                 }
                 self.menu_ouvert = None;
+                self.sous_menu = None;
             }
             Msg::Text(i, t) => {
                 if let Some(Action::Text(f)) = self.actions.borrow().get(i) {
-                    f(&mut self.doc, t);
+                    executer(&self.fenetre.enveloppe, &mut self.doc, |d| f(d, t));
                 }
             }
             Msg::Toggle(i, v) => {
                 if let Some(Action::Toggle(f)) = self.actions.borrow().get(i) {
-                    f(&mut self.doc, v);
+                    executer(&self.fenetre.enveloppe, &mut self.doc, |d| f(d, v));
                 }
             }
             Msg::Show(nom) => {
                 self.fenetre.affiche = self.fenetre.indice(nom);
                 self.menu_ouvert = None;
             }
-            Msg::OpenMenu(i) => self.menu_ouvert = if self.menu_ouvert == Some(i) { None } else { Some(i) },
-            Msg::CloseMenus => self.menu_ouvert = None,
+            Msg::OpenMenu(i) => {
+                self.menu_ouvert = if self.menu_ouvert == Some(i) { None } else { Some(i) };
+                self.sous_menu = None;
+            }
+            Msg::OpenSubmenu(k) => self.sous_menu = Some(k),
+            Msg::CloseMenus => {
+                self.menu_ouvert = None;
+                self.sous_menu = None;
+            }
             Msg::Key(touche, mods) => {
                 if touche == Key::Named(Named::Escape) && self.menu_ouvert.is_some() {
                     self.menu_ouvert = None;
                 } else if let Some((_, f)) = self.fenetre.raccourcis.iter().find(|(r, _)| r.correspond(&touche, mods)) {
-                    f(&mut self.doc);
+                    executer(&self.fenetre.enveloppe, &mut self.doc, |d| f(d));
                 }
             }
             Msg::Fichier(id, chemin) => {
                 if let (Some(suite), Some(chemin)) = (self.suites.remove(&id), chemin)
                     && let Some(f) = suite.downcast_ref::<Box<dyn Fn(&mut D, std::path::PathBuf)>>()
                 {
-                    f(&mut self.doc, chemin);
+                    executer(&self.fenetre.enveloppe, &mut self.doc, |d| f(d, chemin));
                 }
             }
             Msg::Timer(k) => {
                 if let Some((_, _, f)) = self.fenetre.minuteries.get(k) {
-                    f(&mut self.doc);
+                    executer(&self.fenetre.enveloppe, &mut self.doc, |d| f(d));
                 }
             }
             Msg::Fermeture => {
                 if let Some(f) = &self.fenetre.sur_fermeture {
-                    f(&mut self.doc);
+                    executer(&self.fenetre.enveloppe, &mut self.doc, |d| f(d));
                 }
             }
             Msg::Ancien(a) => {
@@ -368,7 +402,7 @@ impl<D: 'static> Moteur<D> {
         }
         let contenu: Vec<Element<'_, Msg>> = ecran.content.iter().map(|n| self.place(n, id)).collect();
         page = page.push(column(contenu).height(Length::Fill));
-        let deroulant = crate::menu_dropdown(&menus, self.menu_ouvert, Msg::CloseMenus);
+        let deroulant = crate::menu_dropdown_sub(&menus, self.menu_ouvert, self.sous_menu, Msg::CloseMenus, Msg::OpenSubmenu);
         let mut couches = stack![page.width(Length::Fill).height(Length::Fill), deroulant];
         for (quand, f, largeur) in &self.fenetre.modales {
             if quand(&self.doc) {
