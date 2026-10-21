@@ -36,6 +36,14 @@ license = "MIT OR Apache-2.0"
 # separees (Robot-Rust prend `image`, ThermoSim prend `wgpu`).
 iced = { version = "0.13", features = ["advanced"] }
 
+# Sous-crates d iced (meme version), pour l editeur de code adapte du widget
+# text_editor d iced : il en utilise les rouages internes. Rien de metier.
+iced_core = "0.13"
+iced_graphics = "0.13"
+# Option `essai` : rendu logiciel des tests d interface (rust_ui::essai).
+iced_tiny_skia = { version = "0.13", optional = true }
+tiny-skia = { version = "0.11", optional = true }
+
 # Options d iced que seules certaines applications utilisent : elles les
 # demandent a RustUI (`rust_ui = { ..., features = ["canvas"] }`) au lieu de
 # dependre d iced elles-memes.
@@ -44,6 +52,7 @@ canvas = ["iced/canvas"]
 tokio = ["iced/tokio"]
 image = ["iced/image"]
 wgpu = ["iced/wgpu"]
+essai = ["dep:iced_tiny_skia", "dep:tiny-skia"]
 
 [build-dependencies]
 # Crust (classes .rsc -> Rust standard), au moment de la compilation seulement :
