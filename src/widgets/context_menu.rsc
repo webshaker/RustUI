@@ -16,11 +16,11 @@
 use iced::widget::container::Style;
 use iced::widget::{Space, column, container, mouse_area};
 use iced::{Border, Element, Length, Padding, Point};
-
 use crate::colors::*;
 use crate::menu::{MenuItem, item_button};
 
 const LARGEUR: f32 = 250.0;
+
 /// Hauteur d'un item : padding 7 + texte 13 + padding 7, plus l'espacement.
 const HAUTEUR_ITEM: f32 = 31.0;
 

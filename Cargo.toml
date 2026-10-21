@@ -35,3 +35,10 @@ license = "MIT OR Apache-2.0"
 # pourquoi. Les FEATURES, elles, peuvent differer — ce sont deux compilations
 # separees (Robot-Rust prend `image`, ThermoSim prend `wgpu`).
 iced = { version = "0.13", features = ["advanced"] }
+
+[build-dependencies]
+# Crust (classes .rsc -> Rust standard), au moment de la compilation seulement :
+# ce n'est pas une dependance du code, le contrat « une seule dependance »
+# (iced) tient. Lien direct vers le depot Crust dans WSL : WSL doit tourner,
+# et RustUI ne compile que sur cette machine tant que Crust n'est pas publie.
+crust-build = { path = "//wsl.localhost/Ubuntu/home/rtx/crust/crates/crust-build" }

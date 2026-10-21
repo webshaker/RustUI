@@ -45,7 +45,6 @@ use iced::widget::{
     Space, button, center, column, container, horizontal_rule, mouse_area, row, text, text_input,
 };
 use iced::{Alignment, Border, Color, Element, Length};
-
 use crate::colors::*;
 
 /// La boite modale : un voile sombre plein ecran, une boite centree dessus.
@@ -157,6 +156,7 @@ pub fn cancel_confirm<'a, Message: Clone + 'a>(
     .spacing(8)
     .into()
 }
+
 /// Une ligne « libelle + saisie ».
 ///
 /// `id` : le champ qui recoit le focus a l ouverture de la modale — sans lui,

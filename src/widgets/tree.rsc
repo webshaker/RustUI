@@ -29,10 +29,8 @@
 //! fleche qui n'ouvre rien apprend a ne plus les regarder.
 
 use std::collections::HashSet;
-
 use iced::widget::{button, column, container, row, text};
 use iced::{Alignment, Border, Color, Element, Length};
-
 use crate::colors::*;
 
 /// Les cles des noeuds deplies. Vit chez l'appelant, pas dans l'arbre.
@@ -45,7 +43,7 @@ const RETRAIT: f32 = 14.0;
 ///
 /// Se construit en chaine : `Node::new(cle, libelle).detail(..).on_click(..)`.
 /// Les champs restent publics — un widget n'a rien a cacher a qui l'utilise.
-pub struct Node<Message> {
+pub class Node<Message> {
     /// Chemin stable, unique dans l'arbre : c'est lui qui porte l'ouverture.
     pub key: String,
     pub label: String,
@@ -64,9 +62,7 @@ pub struct Node<Message> {
     /// en bas de la colonne, loin de l'allee qu'on venait d'importer.
     pub progress: Option<f32>,
     pub children: Vec<Node<Message>>,
-}
 
-impl<Message> Node<Message> {
     pub fn new(key: impl Into<String>, label: impl Into<String>) -> Self {
         Self {
             key: key.into(),

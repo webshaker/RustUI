@@ -34,27 +34,27 @@
 use iced::widget::container::Style;
 use iced::widget::{Space, button, column, container, mouse_area, row, text};
 use iced::{Alignment, Border, Color, Element, Length, Padding};
-
 use crate::colors::*;
 use crate::separator::horizontal_separator;
 
 /// Hauteur de la barre : padding 4 + bouton (5 + texte 14 + 5) + 4 + separateur.
 const HAUTEUR_BARRE: f32 = 36.0;
+
 const LARGEUR_DEROULANT: f32 = 230.0;
+
 /// Le padding horizontal d'un bouton de barre, des deux cotes.
 const PADDING_BOUTON: f32 = 15.0;
+
 /// Largeur moyenne d'un caractere a la taille 14. Approximatif, et suffisant :
 /// un deroulant qui s'ouvre a quelques pixels pres ne gene personne.
 const LARGEUR_CARACTERE: f32 = 7.3;
 
 /// Une ligne de deroulant.
-pub struct MenuItem<Message> {
+pub class MenuItem<Message> {
     pub label: &'static str,
     /// `None` : l'item est grise, sans action.
     pub message: Option<Message>,
-}
 
-impl<Message> MenuItem<Message> {
     pub fn new(label: &'static str, message: Message) -> Self {
         Self { label, message: Some(message) }
     }
@@ -98,12 +98,10 @@ pub(super) fn item_button<'a, Message: Clone + 'a>(
 }
 
 /// Un menu de la barre, et ce qu'il deroule.
-pub struct Menu<Message> {
+pub class Menu<Message> {
     pub label: &'static str,
     pub items: Vec<MenuItem<Message>>,
-}
 
-impl<Message> Menu<Message> {
     pub fn new(label: &'static str, items: Vec<MenuItem<Message>>) -> Self {
         Self { label, items }
     }

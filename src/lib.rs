@@ -51,18 +51,16 @@
 //! aux noms pres. Il ne depend de rien du projet : le deplacer ailleurs sera
 //! une ligne de `Cargo.toml`.
 
-pub mod colors;
-pub mod context_menu;
-pub mod layer;
-pub mod menu;
-pub mod modal;
-pub mod separator;
-pub mod tree;
+// Sources en Crust (`.rsc`) : `theme/` (palette) et `widgets/`. Les anciens
+// chemins (`rust_ui::colors`, `rust_ui::menu`...) restent valables.
+include!(concat!(env!("OUT_DIR"), "/crust/root_lib.rs"));
+
+pub use theme::colors;
+// Module et fonction de meme nom (`layer`, `modal`, `tree`...) : les deux a la fois.
+pub use widgets::{context_menu, layer, menu, modal, separator, tree};
 
 pub use colors::*;
-pub use context_menu::context_menu;
-pub use layer::layer;
 pub use menu::{Menu, MenuItem, menu_bar, menu_dropdown};
-pub use modal::{cancel_confirm, error, field, modal, title};
+pub use modal::{cancel_confirm, error, field, title};
 pub use separator::{horizontal_separator, vertical_separator};
-pub use tree::{Expanded, Node, tree};
+pub use tree::{Expanded, Node};
