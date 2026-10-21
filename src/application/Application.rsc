@@ -12,7 +12,7 @@
 //! }
 //!
 //! fn main() -> rust_ui::AppResult {
-//!     rust_ui::new_app(rust_ui::Window::new(1600.0, 1000.0), App::new)
+//!     rust_ui::new_app(rust_ui::AppWindow::new(1600.0, 1000.0), App::new)
 //! }
 //! ```
 
@@ -40,7 +40,7 @@ pub trait Application: Sized + 'static {
 
 /// La fenetre principale.
 #[derive(Debug, Clone, Copy)]
-pub class Window {
+pub class AppWindow {
     pub width: f32,
     pub height: f32,
     /// La croix ne ferme pas : l'application recoit la demande et decide
@@ -64,7 +64,7 @@ pub type AppResult = iced::Result;
 
 /// Ouvre la fenetre et fait tourner l'application jusqu'a sa fermeture.
 /// Theme sombre et anticrenelage, communs a toutes les applications RustUI.
-pub fn new_app<A: Application>(win: Window, boot: impl FnOnce() -> (A, Task<A::Message>) + 'static) -> AppResult {
+pub fn new_app<A: Application>(win: AppWindow, boot: impl FnOnce() -> (A, Task<A::Message>) + 'static) -> AppResult {
     iced::application(A::title, A::update, A::view)
         .subscription(A::subscription)
         .theme(|_| Theme::Dark)
