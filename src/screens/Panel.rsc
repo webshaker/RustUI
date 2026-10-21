@@ -62,9 +62,10 @@ pub class Panel<'a, D> {
     pub(crate) actions: &'a Actions<D>,
     /// Barre d'outils : elements cote a cote.
     pub(crate) horizontal: bool,
+    pub(crate) marge: Option<u16>,
 
     pub(crate) fn new(actions: &'a Actions<D>, horizontal: bool) -> Self {
-        Self { items: vec![], actions, horizontal }
+        Self { items: vec![], actions, horizontal, marge: None }
     }
 
     /// Un texte.
@@ -121,6 +122,11 @@ pub class Panel<'a, D> {
         self.items.push(if self.horizontal { Space::with_width(Length::Fill).into() } else { Space::with_height(Length::Fill).into() });
     }
 
+    /// Marge interieure du panneau, en pixels (0 : le contenu touche les bords).
+    pub fn set_padding(&mut self, pixels: u16) {
+        self.marge = Some(pixels);
+    }
+
     /// Passerelle de migration : un element de l'interface a `Message`, dont les
     /// messages vont au gestionnaire declare par `Window::legacy`.
     pub fn add_legacy<M: Send + Sync + 'static>(&mut self, element: impl Into<Element<'a, M>>) {
@@ -139,7 +145,11 @@ pub class Panel<'a, D> {
             column(self.items).spacing(8).into()
         };
         container(contenu)
-            .padding(if self.horizontal { [4, 8] } else { [10, 10] })
+            .padding(match self.marge {
+                Some(m) => [m, m],
+                None if self.horizontal => [4, 8],
+                None => [10, 10],
+            })
             .width(Length::Fill)
             .height(if self.horizontal { Length::Shrink } else { Length::Fill })
             .style(move |_| container::Style { background: Some(background.into()), ..Default::default() })

@@ -18,7 +18,7 @@ pub enum Direction {
 }
 
 /// Fonction de remplissage d'un panneau : l'ecran affiche, le panneau, les donnees.
-pub(crate) type Fill<D> = Rc<dyn Fn(&str, &mut Panel<'_, D>, &D)>;
+pub(crate) type Fill<D> = Rc<dyn for<'a> Fn(&str, &mut Panel<'a, D>, &'a D)>;
 /// Fonction de remplissage d'une barre de menus.
 pub(crate) type FillMenu<D> = Rc<dyn Fn(&str, &mut MenuBar<'_, D>, &D)>;
 
@@ -56,12 +56,12 @@ pub class Screen<D> {
     }
 
     /// La barre d'outils, sous les menus (les elements y sont alignes).
-    pub fn add_toolbar(&self, fill: impl Fn(&str, &mut Panel<'_, D>, &D) + 'static) {
+    pub fn add_toolbar(&self, fill: impl for<'a> Fn(&str, &mut Panel<'a, D>, &'a D) + 'static) {
         self.def.borrow_mut().toolbar = Some(Rc::new(fill));
     }
 
     /// Un panneau qui occupe le contenu de l'ecran.
-    pub fn add_panel(&self, fill: impl Fn(&str, &mut Panel<'_, D>, &D) + 'static) {
+    pub fn add_panel(&self, fill: impl for<'a> Fn(&str, &mut Panel<'a, D>, &'a D) + 'static) {
         self.def.borrow_mut().content.push(Node::Panel(Rc::new(fill)));
     }
 
@@ -78,7 +78,7 @@ pub class Splitter<D> {
     pub(crate) def: Rc<RefCell<SplitDef<D>>>,
 
     /// La place suivante est un panneau.
-    pub fn add_panel(&self, fill: impl Fn(&str, &mut Panel<'_, D>, &D) + 'static) {
+    pub fn add_panel(&self, fill: impl for<'a> Fn(&str, &mut Panel<'a, D>, &'a D) + 'static) {
         self.def.borrow_mut().children.push(Node::Panel(Rc::new(fill)));
     }
 

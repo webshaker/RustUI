@@ -125,18 +125,19 @@ pub class Window<D> {
     pub(crate) sur_fermeture: Option<Rappel<D>>,
     pub(crate) passerelle: Option<Passerelle<D>>,
     pub(crate) abonnements_anciens: Option<AbonnementsAnciens<D>>,
+    pub(crate) premiere_tache: Option<Task<Msg>>,
 
     pub fn new(title: impl Into<String>, width: f32, height: f32) -> Self {
         Self {
             titre: title.into(), titre_selon: None, largeur: width, hauteur: height, ecrans: vec![], affiche: 0, raccourcis: vec![],
-            modales: vec![], minuteries: vec![], sur_fermeture: None, passerelle: None, abonnements_anciens: None,
+            modales: vec![], minuteries: vec![], sur_fermeture: None, passerelle: None, abonnements_anciens: None, premiere_tache: None,
         }
     }
 
     /// Une fenetre modale, par-dessus l'ecran tant que `when` est vrai
     /// (par exemple « des modifications seront perdues »). Une action de la
     /// modale remet la condition a faux pour la fermer.
-    pub fn add_modal(&mut self, when: impl Fn(&D) -> bool + 'static, width: f32, fill: impl Fn(&str, &mut Panel<'_, D>, &D) + 'static) {
+    pub fn add_modal(&mut self, when: impl Fn(&D) -> bool + 'static, width: f32, fill: impl for<'a> Fn(&str, &mut Panel<'a, D>, &'a D) + 'static) {
         self.modales.push((Box::new(when), Rc::new(fill), width));
     }
 
@@ -160,6 +161,12 @@ pub class Window<D> {
             Some(m) => handler(d, m.clone()).map(|m| Msg::Ancien(Ancien(std::sync::Arc::new(m)))),
             None => Task::none(),
         }));
+    }
+
+    /// Tache de l'interface a `Message` a lancer au demarrage (par exemple
+    /// ouvrir le fichier passe en argument).
+    pub fn legacy_first<M: Send + Sync + 'static>(&mut self, task: Task<M>) {
+        self.premiere_tache = Some(task.map(|m| Msg::Ancien(Ancien(std::sync::Arc::new(m)))));
     }
 
     /// Abonnements de l'interface a `Message` (clavier, minuterie...).
@@ -202,10 +209,11 @@ pub class Window<D> {
     }
 
     /// Ouvre la fenetre avec ces donnees, et la fait vivre jusqu'a sa fermeture.
-    pub fn run(self, data: D) -> crate::AppResult
+    pub fn run(mut self, data: D) -> crate::AppResult
     where
         D: 'static,
     {
+        let premiere = self.premiere_tache.take().unwrap_or_else(Task::none);
         let reglages = iced::window::Settings {
             size: iced::Size::new(self.largeur, self.hauteur),
             exit_on_close_request: self.sur_fermeture.is_none(),
@@ -217,7 +225,7 @@ pub class Window<D> {
             .theme(|_| Theme::Dark)
             .antialiasing(true)
             .window(reglages)
-            .run_with(move || (moteur, Task::none()))
+            .run_with(move || (moteur, premiere))
     }
 }
 
