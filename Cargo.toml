@@ -40,6 +40,8 @@ iced = { version = "0.13", features = ["advanced"] }
 # text_editor d iced : il en utilise les rouages internes. Rien de metier.
 iced_core = "0.13"
 iced_graphics = "0.13"
+# Dialogues de fichier natifs (rust_ui::open_file, save_file).
+rfd = "0.15"
 # Option `testing` : rendu logiciel des tests d interface (rust_ui::testing).
 iced_tiny_skia = { version = "0.13", optional = true }
 tiny-skia = { version = "0.11", optional = true }

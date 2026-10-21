@@ -22,8 +22,9 @@ use iced::widget::{column, stack};
 use iced::{Element, Length, Subscription, Task, Theme};
 
 use crate::colors::*;
-import { Action, Actions, MenuBar, Msg, Panel } from "./Panel.rsc";
-import { Direction, Node, Screen, ScreenDef } from "./Screen.rsc";
+import { Action, Actions, Ancien, MenuBar, Msg, Panel } from "./Panel.rsc";
+import { Effet } from "./effects.rsc";
+import { Direction, Fill, Node, Screen, ScreenDef } from "./Screen.rsc";
 
 /// Une touche de raccourci, lue depuis un texte comme « Ctrl+S » ou « F5 ».
 #[derive(Debug, Clone, PartialEq)]
@@ -101,6 +102,13 @@ impl Raccourci {
 
 type TitreSelon<D> = Box<dyn Fn(&D) -> String>;
 type Raccourcis<D> = Vec<(Raccourci, Box<dyn Fn(&mut D)>)>;
+type Condition<D> = Box<dyn Fn(&D) -> bool>;
+type Rappel<D> = Box<dyn Fn(&mut D)>;
+type Modales<D> = Vec<(Condition<D>, Fill<D>, f32)>;
+type Minuteries<D> = Vec<(u64, Condition<D>, Box<dyn Fn(&mut D)>)>;
+/// Passerelle vers une interface a `Message` (le temps d'une migration).
+type Passerelle<D> = Box<dyn Fn(&mut D, Ancien) -> Task<Msg>>;
+type AbonnementsAnciens<D> = Box<dyn Fn(&D) -> Subscription<Msg>>;
 
 /// La fenetre : ses ecrans, ses raccourcis, son titre.
 pub class Window<D> {
@@ -112,9 +120,51 @@ pub class Window<D> {
     pub(crate) ecrans: Vec<(&'static str, Rc<RefCell<ScreenDef<D>>>)>,
     pub(crate) affiche: usize,
     pub(crate) raccourcis: Raccourcis<D>,
+    pub(crate) modales: Modales<D>,
+    pub(crate) minuteries: Minuteries<D>,
+    pub(crate) sur_fermeture: Option<Rappel<D>>,
+    pub(crate) passerelle: Option<Passerelle<D>>,
+    pub(crate) abonnements_anciens: Option<AbonnementsAnciens<D>>,
 
     pub fn new(title: impl Into<String>, width: f32, height: f32) -> Self {
-        Self { titre: title.into(), titre_selon: None, largeur: width, hauteur: height, ecrans: vec![], affiche: 0, raccourcis: vec![], }
+        Self {
+            titre: title.into(), titre_selon: None, largeur: width, hauteur: height, ecrans: vec![], affiche: 0, raccourcis: vec![],
+            modales: vec![], minuteries: vec![], sur_fermeture: None, passerelle: None, abonnements_anciens: None,
+        }
+    }
+
+    /// Une fenetre modale, par-dessus l'ecran tant que `when` est vrai
+    /// (par exemple « des modifications seront perdues »). Une action de la
+    /// modale remet la condition a faux pour la fermer.
+    pub fn add_modal(&mut self, when: impl Fn(&D) -> bool + 'static, width: f32, fill: impl Fn(&str, &mut Panel<'_, D>, &D) + 'static) {
+        self.modales.push((Box::new(when), Rc::new(fill), width));
+    }
+
+    /// La croix de la fenetre appelle `action` au lieu de fermer ; elle
+    /// ferme avec `rust_ui::quit()` (par exemple apres confirmation).
+    pub fn on_close(&mut self, action: impl Fn(&mut D) + 'static) {
+        self.sur_fermeture = Some(Box::new(action));
+    }
+
+    /// Appelle `action` toutes les `millis` ms tant que `when` est vrai
+    /// (option `tokio`).
+    #[cfg(feature = "tokio")]
+    pub fn add_timer(&mut self, millis: u64, when: impl Fn(&D) -> bool + 'static, action: impl Fn(&mut D) + 'static) {
+        self.minuteries.push((millis, Box::new(when), Box::new(action)));
+    }
+
+    /// Passerelle de migration : les elements a `Message` places par
+    /// `Panel::add_legacy` sont traites par `handler`, comme avant.
+    pub fn legacy<M: Clone + Send + Sync + 'static>(&mut self, handler: impl Fn(&mut D, M) -> Task<M> + 'static) {
+        self.passerelle = Some(Box::new(move |d, ancien| match ancien.0.downcast_ref::<M>() {
+            Some(m) => handler(d, m.clone()).map(|m| Msg::Ancien(Ancien(std::sync::Arc::new(m)))),
+            None => Task::none(),
+        }));
+    }
+
+    /// Abonnements de l'interface a `Message` (clavier, minuterie...).
+    pub fn legacy_subscription<M: Send + Sync + 'static>(&mut self, f: impl Fn(&D) -> Subscription<M> + 'static) {
+        self.abonnements_anciens = Some(Box::new(move |d| f(d).map(|m| Msg::Ancien(Ancien(std::sync::Arc::new(m))))));
     }
 
     /// L'indice de l'ecran `nom` ; un nom inconnu est une erreur de programmation.
@@ -156,13 +206,17 @@ pub class Window<D> {
     where
         D: 'static,
     {
-        let (largeur, hauteur) = (self.largeur, self.hauteur);
-        let moteur = Moteur { fenetre: self, doc: data, menu_ouvert: None, actions: RefCell::new(vec![]) };
+        let reglages = iced::window::Settings {
+            size: iced::Size::new(self.largeur, self.hauteur),
+            exit_on_close_request: self.sur_fermeture.is_none(),
+            ..Default::default()
+        };
+        let moteur = Moteur::new(self, data);
         iced::application(Moteur::<D>::titre, Moteur::<D>::mise_a_jour, Moteur::<D>::vue)
             .subscription(Moteur::<D>::abonnements)
             .theme(|_| Theme::Dark)
             .antialiasing(true)
-            .window_size((largeur, hauteur))
+            .window(reglages)
             .run_with(move || (moteur, Task::none()))
     }
 }
@@ -173,9 +227,16 @@ pub(crate) struct Moteur<D> {
     doc: D,
     menu_ouvert: Option<usize>,
     actions: Actions<D>,
+    /// Suites des dialogues de fichier en cours (`Box<dyn Fn(&mut D, PathBuf)>`).
+    suites: std::collections::HashMap<u64, Box<dyn std::any::Any>>,
+    prochaine_suite: u64,
 }
 
 impl<D: 'static> Moteur<D> {
+    pub(crate) fn new(fenetre: Window<D>, doc: D) -> Self {
+        Moteur { fenetre, doc, menu_ouvert: None, actions: RefCell::new(vec![]), suites: Default::default(), prochaine_suite: 0 }
+    }
+
     fn titre(&self) -> String {
         match &self.fenetre.titre_selon {
             Some(f) => f(&self.doc),
@@ -184,6 +245,12 @@ impl<D: 'static> Moteur<D> {
     }
 
     fn mise_a_jour(&mut self, m: Msg) -> Task<Msg> {
+        let tache = self.traiter(m);
+        // Ce que les actions ont demande en plus (fichier, ecran, quitter...).
+        Task::batch([tache, self.effets()])
+    }
+
+    fn traiter(&mut self, m: Msg) -> Task<Msg> {
         match m {
             Msg::Action(i) => {
                 if let Some(Action::Simple(f)) = self.actions.borrow().get(i) {
@@ -214,9 +281,61 @@ impl<D: 'static> Moteur<D> {
                     f(&mut self.doc);
                 }
             }
+            Msg::Fichier(id, chemin) => {
+                if let (Some(suite), Some(chemin)) = (self.suites.remove(&id), chemin)
+                    && let Some(f) = suite.downcast_ref::<Box<dyn Fn(&mut D, std::path::PathBuf)>>()
+                {
+                    f(&mut self.doc, chemin);
+                }
+            }
+            Msg::Timer(k) => {
+                if let Some((_, _, f)) = self.fenetre.minuteries.get(k) {
+                    f(&mut self.doc);
+                }
+            }
+            Msg::Fermeture => {
+                if let Some(f) = &self.fenetre.sur_fermeture {
+                    f(&mut self.doc);
+                }
+            }
+            Msg::Ancien(a) => {
+                if let Some(p) = &self.fenetre.passerelle {
+                    return p(&mut self.doc, a);
+                }
+            }
+            Msg::Rien => {}
             Msg::Quit => return iced::exit(),
         }
         Task::none()
+    }
+
+    /// Execute les effets demandes par les actions (voir `effects.rsc`).
+    fn effets(&mut self) -> Task<Msg> {
+        let mut taches = vec![];
+        for e in super::effects::prendre() {
+            match e {
+                Effet::Ecran(nom) => self.fenetre.affiche = self.fenetre.indice(&nom),
+                Effet::Copier(t) => taches.push(iced::clipboard::write(t)),
+                Effet::Quitter => taches.push(iced::exit()),
+                Effet::Fichier { titre, filtres, enregistrer, dossier, suite } => {
+                    let id = self.prochaine_suite;
+                    self.prochaine_suite += 1;
+                    self.suites.insert(id, suite);
+                    let mut d = rfd::AsyncFileDialog::new().set_title(&titre);
+                    for (nom, ext) in &filtres {
+                        d = d.add_filter(nom, ext);
+                    }
+                    if let Some(dossier) = dossier {
+                        d = d.set_directory(dossier);
+                    }
+                    taches.push(match enregistrer {
+                        Some(nom) => Task::perform(d.set_file_name(nom).save_file(), move |h| Msg::Fichier(id, h.map(|h| h.path().to_path_buf()))),
+                        None => Task::perform(d.pick_file(), move |h| Msg::Fichier(id, h.map(|h| h.path().to_path_buf()))),
+                    });
+                }
+            }
+        }
+        Task::batch(taches)
     }
 
     fn vue(&self) -> Element<'_, Msg> {
@@ -242,7 +361,15 @@ impl<D: 'static> Moteur<D> {
         let contenu: Vec<Element<'_, Msg>> = ecran.content.iter().map(|n| self.place(n, id)).collect();
         page = page.push(column(contenu).height(Length::Fill));
         let deroulant = crate::menu_dropdown(&menus, self.menu_ouvert, Msg::CloseMenus);
-        stack![page.width(Length::Fill).height(Length::Fill), deroulant].into()
+        let mut couches = stack![page.width(Length::Fill).height(Length::Fill), deroulant];
+        for (quand, f, largeur) in &self.fenetre.modales {
+            if quand(&self.doc) {
+                let mut p = Panel::new(&self.actions, false);
+                f(id, &mut p, &self.doc);
+                couches = couches.push(crate::modal(p.into_content(), *largeur, Msg::Rien));
+            }
+        }
+        couches.into()
     }
 
     /// Une place de l'ecran : un panneau rempli, ou un decoupage.
@@ -279,7 +406,21 @@ impl<D: 'static> Moteur<D> {
     }
 
     fn abonnements(&self) -> Subscription<Msg> {
-        keyboard::on_key_press(|touche, mods| Some(Msg::Key(touche, mods)))
+        let mut a = vec![keyboard::on_key_press(|touche, mods| Some(Msg::Key(touche, mods)))];
+        if self.fenetre.sur_fermeture.is_some() {
+            a.push(iced::window::close_requests().map(|_| Msg::Fermeture));
+        }
+        #[cfg(feature = "tokio")]
+        for (k, (ms, quand, _)) in self.fenetre.minuteries.iter().enumerate() {
+            if quand(&self.doc) {
+                // `with` : l'indice suit l'abonnement sans capture (exige par iced).
+                a.push(iced::time::every(std::time::Duration::from_millis(*ms)).with(k).map(|(k, _)| Msg::Timer(k)));
+            }
+        }
+        if let Some(f) = &self.fenetre.abonnements_anciens {
+            a.push(f(&self.doc));
+        }
+        Subscription::batch(a)
     }
 }
 
@@ -322,7 +463,7 @@ mod tests {
         reglages.add_panel(|_, p: &mut Panel<Doc>, d| p.add_input("Titre", &d.titre, |d: &mut Doc, t| d.titre = t));
         w.add_shortcut("Ctrl+R", |d: &mut Doc| d.compteur = 0);
         w.show("accueil");
-        Moteur { fenetre: w, doc: Doc::default(), menu_ouvert: None, actions: RefCell::new(vec![]) }
+        Moteur::new(w, Doc::default())
     }
 
     #[test]
@@ -355,5 +496,48 @@ mod tests {
     #[should_panic(expected = "ecran inconnu")]
     fn un_nom_d_ecran_inconnu_est_signale() {
         moteur().fenetre.show("ailleurs");
+    }
+
+    #[test]
+    fn une_action_peut_changer_d_ecran_et_une_modale_s_affiche_selon_les_donnees() {
+        let mut w = Window::new("Essai", 800.0, 600.0);
+        let a = w.add_screen("a");
+        w.add_screen("b");
+        a.add_panel(|_, p: &mut Panel<Doc>, _| {
+            p.add_button("aller", |d: &mut Doc| {
+                d.compteur = 7;
+                crate::show_screen("b");
+            })
+        });
+        // Modale visible quand le compteur vaut 7 ; son bouton la referme.
+        w.add_modal(|d: &Doc| d.compteur == 7, 300.0, |_, p: &mut Panel<Doc>, _| p.add_button("ok", |d: &mut Doc| d.compteur = 0));
+        let mut m = Moteur::new(w, Doc::default());
+        let _ = m.vue();
+        let _ = m.mise_a_jour(Msg::Action(0));
+        assert_eq!((m.doc.compteur, m.fenetre.affiche), (7, 1), "action executee, puis ecran « b »");
+        let _ = m.vue();
+        // L'ecran « b » est vide : la seule action est le bouton de la modale.
+        let _ = m.mise_a_jour(Msg::Action(0));
+        assert_eq!(m.doc.compteur, 0);
+    }
+
+    #[derive(Debug, Clone)]
+    enum Ancien_ {
+        Plus(i32),
+    }
+
+    #[test]
+    fn la_passerelle_traite_les_messages_d_avant() {
+        let mut w = Window::new("Essai", 800.0, 600.0);
+        w.add_screen("a").add_panel(|_, p: &mut Panel<Doc>, _| p.add_legacy(iced::widget::button("+").on_press(Ancien_::Plus(2))));
+        w.legacy(|d: &mut Doc, m: Ancien_| {
+            let Ancien_::Plus(n) = m;
+            d.compteur += n;
+            Task::none()
+        });
+        let mut m = Moteur::new(w, Doc::default());
+        let _ = m.vue();
+        let _ = m.mise_a_jour(Msg::Ancien(Ancien(std::sync::Arc::new(Ancien_::Plus(2)))));
+        assert_eq!(m.doc.compteur, 2);
     }
 }

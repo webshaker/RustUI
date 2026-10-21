@@ -19,7 +19,22 @@ pub enum Msg {
     OpenMenu(usize),
     CloseMenus,
     Key(iced::keyboard::Key, iced::keyboard::Modifiers),
+    Fichier(u64, Option<std::path::PathBuf>),
+    Timer(usize),
+    Fermeture,
+    Ancien(Ancien),
+    Rien,
     Quit,
+}
+
+/// Un `Message` de l'interface d'avant, porte jusqu'a la passerelle (`Window::legacy`).
+#[derive(Clone)]
+pub struct Ancien(pub(crate) std::sync::Arc<dyn std::any::Any + Send + Sync>);
+
+impl std::fmt::Debug for Ancien {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Ancien")
+    }
 }
 
 /// Une action enregistree pendant l'affichage, appelee au clic.
@@ -104,6 +119,17 @@ pub class Panel<'a, D> {
     /// Un espace qui pousse la suite au bout (a droite, ou en bas).
     pub fn add_space(&mut self) {
         self.items.push(if self.horizontal { Space::with_width(Length::Fill).into() } else { Space::with_height(Length::Fill).into() });
+    }
+
+    /// Passerelle de migration : un element de l'interface a `Message`, dont les
+    /// messages vont au gestionnaire declare par `Window::legacy`.
+    pub fn add_legacy<M: Send + Sync + 'static>(&mut self, element: impl Into<Element<'a, M>>) {
+        self.items.push(element.into().map(|m| Msg::Ancien(Ancien(std::sync::Arc::new(m)))));
+    }
+
+    /// Le contenu seul, sans fond ni marges (pour une modale).
+    pub(crate) fn into_content(self) -> Element<'a, Msg> {
+        column(self.items).spacing(12).into()
     }
 
     pub(crate) fn into_element(self, background: iced::Color) -> Element<'a, Msg> {
