@@ -59,10 +59,10 @@ Chaque `add_*` rend l'élément, qui se règle en chaîne (`.color()`,
 
 | | |
 |---|---|
-| `Window` | `add_screen`, `show`, `screen_from` (l'écran affiché suit les données), `title_from`, `add_shortcut`, `add_modal`, `add_timer` (option `tokio`), `around_actions` (toute action passe par là : historique d'annulation, recalculs), `on_close`, `run` |
+| `Window` | `add_screen`, `show`, `set_icon` (RGBA), `set_icon_file` (option `image`), `screen_from` (l'écran affiché suit les données), `title_from`, `add_shortcut`, `add_modal`, `add_timer` (option `tokio`), `around_actions` (toute action passe par là : historique d'annulation, recalculs), `on_close`, `run` |
 | `Screen` | `add_menu`, `add_toolbar`, `add_statusbar`, `add_panel`, `add_splitter`, `add_shortcut` |
 | `Panel` : textes | `add_text`, `add_title`, `add_section`, `add_note`, `add_line` (libellé / valeur) |
-| `Panel` : commandes | `add_button` (`.primary()`, `.secondary()`, `.small()`, `.accent(c)`, `.tab()`, `.flat()`, `.link()`, `.swatch(c)`), `add_screen_button`, `add_input`, `add_checkbox`, `add_slider` |
+| `Panel` : commandes | `add_button` (`.primary()`, `.secondary()`, `.small()`, `.accent(c)`, `.tab()`, `.flat()`, `.link()`, `.swatch(c)`, `.tooltip(t)`), `add_image_button` (option `image`), `add_screen_button`, `add_input`, `add_checkbox`, `add_slider` |
 | `Panel` : groupes | `add_row`, `add_column`, `add_scroll` (`.from_bottom()` pour un journal), `add_separator`, `add_space`, `add_gap`, `add_swatch` |
 | `Panel` : widgets | `add_tree`, `add_canvas` (option `canvas`), `add_curve`, `add_widget` (tout widget qui produit ses propres événements : l'éditeur de code...) |
 | `Panel` : réglages | `set_width`, `set_height`, `hide`, `set_scroll`, `set_padding`, `set_spacing`, `set_background`, `set_centered` |

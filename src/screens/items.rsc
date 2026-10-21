@@ -117,11 +117,13 @@ pub struct Button {
     pub(crate) fill: bool,
     pub(crate) size: Option<u16>,
     pub(crate) padding: Option<[u16; 2]>,
+    pub(crate) image: Option<std::path::PathBuf>,
+    pub(crate) tooltip: Option<String>,
 }
 
 impl Button {
     pub(crate) fn new(label: String, msg: Option<Msg>) -> Self {
-        Button { label, detail: None, msg, kind: Kind::Normal, selected: false, text_color: None, mono: false, fill: false, size: None, padding: None }
+        Button { label, detail: None, msg, kind: Kind::Normal, selected: false, text_color: None, mono: false, fill: false, size: None, padding: None, image: None, tooltip: None }
     }
 
     /// Grise et inerte quand `enabled` est faux.
@@ -216,6 +218,12 @@ impl Button {
         self
     }
 
+    /// Une bulle au survol.
+    pub fn tooltip(&mut self, t: impl Into<String>) -> &mut Self {
+        self.tooltip = Some(t.into());
+        self
+    }
+
     /// Marges interieures (verticale, horizontale), en pixels.
     pub fn padding(&mut self, vertical: u16, horizontal: u16) -> &mut Self {
         self.padding = Some([vertical, horizontal]);
@@ -243,7 +251,15 @@ impl Button {
         if let Some(c) = self.text_color {
             libelle = libelle.color(c);
         }
+        let image = self.image;
+        #[cfg(not(feature = "image"))]
+        let _ = image;
         let contenu: Element<'a, Msg> = match (kind, self.detail) {
+            #[cfg(feature = "image")]
+            _ if image.is_some() => {
+                let cote = self.size.unwrap_or(32);
+                iced::widget::image(image.unwrap_or_default()).width(cote).height(cote).into()
+            }
             (Kind::Swatch(_), _) => Space::new(18, 18).into(),
             (_, Some((d, c))) => column![libelle, text(d).size(taille.saturating_sub(2)).color(c)].spacing(1).into(),
             (_, None) => libelle.into(),
@@ -257,7 +273,15 @@ impl Button {
         if let Some(m) = self.msg {
             b = b.on_press(m);
         }
-        b.into()
+        match self.tooltip {
+            Some(t) => {
+                let bulle = container(text(t).size(12))
+                    .padding(6)
+                    .style(|_| container::Style { background: Some(POPUP_BG.into()), border: Border { color: BORDER, width: 1.0, radius: 4.0.into() }, ..Default::default() });
+                tooltip(b, bulle, tooltip::Position::Bottom).into()
+            }
+            None => b.into(),
+        }
     }
 }
 

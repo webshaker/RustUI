@@ -152,11 +152,12 @@ pub class Window<D> {
     pub(crate) abonnements_anciens: Option<AbonnementsAnciens<D>>,
     pub(crate) premiere_tache: Option<Task<Msg>>,
     pub(crate) enveloppe: Option<Enveloppe<D>>,
+    pub(crate) icone: Option<iced::window::Icon>,
 
     pub fn new(title: impl Into<String>, width: f32, height: f32) -> Self {
         Self {
             titre: title.into(), titre_selon: None, largeur: width, hauteur: height, ecrans: vec![], affiche: 0, ecran_selon: None, raccourcis: vec![],
-            modales: vec![], minuteries: vec![], sur_fermeture: None, passerelle: None, abonnements_anciens: None, premiere_tache: None, enveloppe: None,
+            modales: vec![], minuteries: vec![], sur_fermeture: None, passerelle: None, abonnements_anciens: None, premiere_tache: None, enveloppe: None, icone: None,
         }
     }
 
@@ -250,6 +251,21 @@ pub class Window<D> {
         self.raccourcis.push((r, Box::new(action)));
     }
 
+    /// L'icone de la fenetre : `rgba`, 4 octets par pixel, `width` x `height`.
+    pub fn set_icon(&mut self, rgba: Vec<u8>, width: u32, height: u32) {
+        let icone = iced::window::icon::from_rgba(rgba, width, height).unwrap_or_else(|e| panic!("icone invalide : {e}"));
+        self.icone = Some(icone);
+    }
+
+    /// L'icone de la fenetre, lue dans un fichier image (PNG...) ; option `image`.
+    #[cfg(feature = "image")]
+    pub fn set_icon_file(&mut self, path: impl AsRef<std::path::Path>) -> Result<(), String> {
+        let chemin = path.as_ref();
+        let icone = iced::window::icon::from_file(chemin).map_err(|e| format!("{} : {e}", chemin.display()))?;
+        self.icone = Some(icone);
+        Ok(())
+    }
+
     /// Ouvre la fenetre avec ces donnees, et la fait vivre jusqu'a sa fermeture.
     pub fn run(mut self, data: D) -> crate::AppResult
     where
@@ -259,6 +275,7 @@ pub class Window<D> {
         let reglages = iced::window::Settings {
             size: iced::Size::new(self.largeur, self.hauteur),
             exit_on_close_request: self.sur_fermeture.is_none(),
+            icon: self.icone.take(),
             ..Default::default()
         };
         let moteur = Moteur::new(self, data);
@@ -702,5 +719,22 @@ mod tests {
         let ecran = ecran.borrow();
         let (_, largeur, _) = m.place(&ecran.content[0], "a").unwrap();
         assert_eq!(largeur, None, "seul le second panneau reste : pas de largeur fixe");
+    }
+
+    /// Icone de fenetre ; bouton a image d'une barre d'outils, avec bulle et etat enfonce.
+    #[cfg(feature = "image")]
+    #[test]
+    fn icone_et_bouton_a_image() {
+        let mut w = Window::new("Essai", 800.0, 600.0);
+        w.set_icon(vec![255; 4 * 2 * 2], 2, 2);
+        assert!(w.icone.is_some());
+        assert!(w.set_icon_file("introuvable.png").is_err());
+        w.add_screen("a").add_toolbar(|_, p: &mut Panel<Doc>, d| {
+            p.add_image_button("images/outil.png", |d: &mut Doc| d.compteur += 1).tooltip("Outil").selected(d.compteur > 0);
+        });
+        let mut m = Moteur::new(w, Doc::default());
+        let _ = m.vue();
+        let _ = m.mise_a_jour(Msg::Action(0));
+        assert_eq!(m.doc.compteur, 1);
     }
 }

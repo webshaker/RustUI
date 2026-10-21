@@ -208,6 +208,15 @@ pub class Panel<'a, D> {
         self.add_button(label, action).enabled(enabled)
     }
 
+    /// Un bouton a image (32 pixels de cote, `.size(n)` pour changer), sans
+    /// fond, en couleur quand il est `.selected(..)` (outil actif) ; option `image`.
+    #[cfg(feature = "image")]
+    pub fn add_image_button(&mut self, path: impl Into<std::path::PathBuf>, action: impl Fn(&mut D) + 'static) -> &mut Button {
+        let b = self.add_button("", action).flat().padding(4, 4);
+        b.image = Some(path.into());
+        b
+    }
+
     /// Un bouton qui affiche un autre ecran.
     pub fn add_screen_button(&mut self, label: impl Into<String>, screen: &'static str) -> &mut Button {
         self.bouton(Button::new(label.into(), Some(Msg::Show(screen))))
