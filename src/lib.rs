@@ -1,4 +1,10 @@
-//! Les widgets iced partages — **ils ne savent pas ce qu'ils affichent.**
+//! Deux facons de s'en servir (voir le README) :
+//! - **les widgets seuls** (ci-dessous), dans une application iced a `Message` ;
+//! - **l'application decrite par ecrans** (`Window`, `Screen`, `Panel`) : des
+//!   donnees, des fonctions qui remplissent les panneaux, des actions `|doc| ...`
+//!   ; RustUI possede la boucle et l'application ne voit pas iced.
+//!
+//! # Les widgets — **ils ne savent pas ce qu'ils affichent.**
 //!
 //! Chaque widget est generique sur `Message` : c'est le type de l'application
 //! qui l'utilise, et ce crate ne le connait jamais. Il duplique les messages

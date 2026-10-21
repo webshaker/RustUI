@@ -1,12 +1,88 @@
 # rust_ui
 
-Les widgets [iced](https://iced.rs) partagés entre **Robot-Rust** (chaîne
-d'annotation d'un robot désherbeur) et **ThermoSim** (simulateur thermique de
-bâtiments). Deux applications sans aucun rapport, la même fenêtre.
+Les widgets [iced](https://iced.rs) partagés, et une façon de décrire une
+application par écrans, entre **Robot-Rust** (chaîne d'annotation d'un robot
+désherbeur), **ThermoSim** (simulateur thermique de bâtiments) et le
+**Simulateur électronique**. Des applications sans aucun rapport, la même
+fenêtre.
 
 ```toml
 rust_ui = { git = "https://github.com/webshaker/RustUI" }
 ```
+
+## Deux façons de s'en servir
+
+1. **Les widgets seuls** (ci-dessous) : l'application garde sa boucle iced, son
+   `Message`, son `update` et sa `view`, et y place les widgets de RustUI.
+2. **L'application décrite par écrans** (`Window`) : RustUI possède la boucle.
+   L'application n'a ni `Message` ni `update` ni dépendance à iced : des
+   données (un `Document`), des fonctions qui remplissent les panneaux, et des
+   actions `|doc| ...` qui modifient les données. C'est ce que fait le
+   Simulateur électronique.
+
+### L'application décrite par écrans
+
+```rust
+use rust_ui::{Direction, MenuBar, Panel, Window};
+
+fn main() -> rust_ui::AppResult {
+    let mut w = Window::new("Mon application", 1200.0, 700.0);
+    let home = w.add_screen("home");               // un écran, par son nom
+    home.add_menu(menus);
+    home.add_toolbar(outils);
+    home.add_statusbar(etat);
+    let split = home.add_splitter(Direction::Horizontal, [1, 2, 1]);
+    split.add_panel(gauche);                       // une fonction par panneau
+    split.add_panel(centre);
+    split.add_panel(droite);
+    w.add_shortcut("Ctrl+Z", Document::annuler);   // touche → méthode
+    home.add_shortcut("Delete", Document::supprimer); // valable sur cet écran
+    w.show("home");
+    w.run(Document::default())
+}
+
+/// Reçoit l'écran affiché, le panneau, les données.
+fn gauche(_ecran: &str, p: &mut Panel<Document>, doc: &Document) {
+    p.set_width(270.0);                            // sinon : sa part du découpage
+    p.add_section("Sélection");
+    p.add_line("Valeur", doc.valeur.to_string()).color(rust_ui::ORANGE);
+    p.add_row(|r| {
+        r.add_button("Pause   (F8)", Document::pause).small();
+        r.add_text("EN PAUSE").color(rust_ui::ORANGE);
+    });
+    p.add_button("Supprimer", Document::supprimer).secondary().enabled(doc.selection.is_some());
+}
+```
+
+Chaque `add_*` rend l'élément, qui se règle en chaîne (`.color()`,
+`.size()`, `.mono()`, `.small()`, `.selected()`...).
+
+| | |
+|---|---|
+| `Window` | `add_screen`, `show`, `screen_from` (l'écran affiché suit les données), `title_from`, `add_shortcut`, `add_modal`, `add_timer` (option `tokio`), `around_actions` (toute action passe par là : historique d'annulation, recalculs), `on_close`, `run` |
+| `Screen` | `add_menu`, `add_toolbar`, `add_statusbar`, `add_panel`, `add_splitter`, `add_shortcut` |
+| `Panel` : textes | `add_text`, `add_title`, `add_section`, `add_note`, `add_line` (libellé / valeur) |
+| `Panel` : commandes | `add_button` (`.primary()`, `.secondary()`, `.small()`, `.accent(c)`, `.tab()`, `.flat()`, `.link()`, `.swatch(c)`), `add_screen_button`, `add_input`, `add_checkbox`, `add_slider` |
+| `Panel` : groupes | `add_row`, `add_column`, `add_scroll` (`.from_bottom()` pour un journal), `add_separator`, `add_space`, `add_gap`, `add_swatch` |
+| `Panel` : widgets | `add_tree`, `add_canvas` (option `canvas`), `add_curve`, `add_widget` (tout widget qui produit ses propres événements : l'éditeur de code...) |
+| `Panel` : réglages | `set_width`, `set_height`, `hide`, `set_scroll`, `set_padding`, `set_spacing`, `set_background`, `set_centered` |
+| effets d'une action | `open_file`, `save_file`, `copy_to_clipboard`, `show_screen`, `quit` |
+| tests (option `testing`) | `testing::Harness` : la fenêtre sans l'ouvrir — `press("Ctrl+Z")`, `data()`, `layout(w, h)`, `capture(w, h, png)` |
+
+Migration progressive d'une application à `Message` : `Panel::add_legacy`,
+`Window::legacy`, `legacy_subscription`, `legacy_first` font passer une vue
+d'avant dans un panneau, le temps de la remplacer morceau par morceau.
+
+Exemple complet : `cargo run --example compteur`.
+
+## Les sources sont en Crust
+
+Les fichiers `.rsc` (classes Crust) sont traduits en Rust standard par
+`crust-build`, dans `build.rs`. Pour l'application qui utilise RustUI, rien ne
+change (l'API est du Rust ordinaire), **mais** `crust-build` est lié par un
+chemin vers le dépôt Crust dans WSL : RustUI ne compile que sur cette machine,
+**WSL lancé**, et seulement par le `[patch]` local (voir plus bas) tant que
+Crust n'est pas publié.
 
 ## Ce qu'il y a dedans
 
@@ -66,16 +142,17 @@ bibliothèque partagée existe pour ne pas payer une troisième fois.
 rust_ui::layer(mon_canvas)
 ```
 
-## Ce qu'il ne fait pas, et c'est ce qui le rend possible
+## Ce que les widgets ne font pas, et c'est ce qui les rend possibles
 
-Il ne tient **aucun état**. Il ne possède pas la boucle de l'application, il ne
-sait pas ce qu'on affiche, il ne décide de rien. Ce n'est qu'un paquet de
-fonctions qui rendent des `Element`, plus quelques structures pour les décrire.
+Les widgets ne tiennent **aucun état**. Ils ne possèdent pas la boucle de
+l'application (seule `Window` la possède, si on la choisit), ne savent pas ce
+qu'on affiche, ne décident de rien. Ce n'est qu'un paquet de fonctions qui rendent des `Element`, plus quelques structures pour les décrire.
 L'état d'ouverture d'un arbre, le menu déroulé, la sélection : tout cela vit
 chez l'appelant.
 
-Et il n'a **qu'une seule dépendance**, `iced`. Le jour où quelqu'un en ajoute
-une autre, elle se voit dans `Cargo.toml`.
+Ses dépendances : `iced` (et ses sous-crates, pour l'éditeur de code) et `rfd`
+(dialogues de fichier de `Window`). Rien de métier : le jour où quelqu'un en
+ajoute une autre, elle se voit dans `Cargo.toml`.
 
 ## Deux conventions
 
