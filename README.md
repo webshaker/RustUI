@@ -10,6 +10,11 @@ fenêtre.
 rust_ui = { git = "https://github.com/webshaker/RustUI" }
 ```
 
+**RustUI est écrit en [Crust](https://github.com/webshaker/crust)** (fichiers `.rsc`, Rust avec des classes).
+Pour l'utiliser, rien à installer : cargo récupère `crust-build` tout seul. Pour modifier
+ses sources, installer `cargo-crust`, `crust-lsp` et l'extension VS Code Crust (voir le
+README de Crust).
+
 ## Deux façons de s'en servir
 
 1. **Les widgets seuls** (ci-dessous) : l'application garde sa boucle iced, son

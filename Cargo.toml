@@ -60,4 +60,4 @@ testing = ["dep:iced_tiny_skia", "dep:tiny-skia"]
 # Crust (classes .rsc -> Rust standard), au moment de la compilation seulement :
 # rien de metier, et rien que l'application ait a connaitre. Depot public,
 # epingle a une revision : la compilation est la meme partout (sans WSL).
-crust-build = { git = "https://github.com/webshaker/crust", rev = "5c2e80a4e2e93551153dbc9767fafe2730b576f9" }
+crust-build = { git = "https://github.com/webshaker/crust", rev = "cf30247" }
